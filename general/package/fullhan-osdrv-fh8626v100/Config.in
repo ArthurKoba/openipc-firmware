@@ -1,0 +1,9 @@
+config BR2_PACKAGE_FULLHAN_OSDRV_FH8626V100
+	bool "fullhan-osdrv-fh8626v100"
+	depends on BR2_arm
+	help
+	  FH8626V100 media modules, ARC firmware, GC1054 sensor plug-in,
+	  and the OpenIPC media-owner utility.
+
+	  The kernel-facing loader is SoC-generic. Board-specific sensor
+	  reset and power sequencing must be supplied by a device profile.

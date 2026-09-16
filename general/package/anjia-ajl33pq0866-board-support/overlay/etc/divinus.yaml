@@ -1,0 +1,72 @@
+source:
+  type: fh86
+  path: /run/fh8626-divinus.sock
+  max_payload: 4194304
+  connect_timeout_ms: 500
+  read_timeout_ms: 1500
+  reconnect_delay_ms: 100
+
+system:
+  web_port: 18080
+  web_enable_auth: false
+  web_auth_user: admin
+  web_auth_pass: 12345
+  web_auth_skiplocal: true
+  web_enable_static: false
+  isp_thread_stack_size: 16384
+  venc_stream_thread_stack_size: 65536
+  web_server_thread_stack_size: 65536
+  time_format: "%Y-%m-%d %H:%M:%S"
+  watchdog: 10
+
+isp:
+  mirror: false
+  flip: false
+  antiflicker: 50
+
+osd:
+  enable: false
+mdns:
+  enable: false
+onvif:
+  enable: true
+  enable_auth: false
+  auth_user: admin
+  auth_pass: 12345
+
+rtsp:
+  enable: true
+  port: 18554
+  enable_auth: false
+  auth_user: admin
+  auth_pass: 12345
+
+record:
+  enable: true
+  continuous: false
+  path: /mnt/mmcblk0p1/recordings
+stream:
+  enable: false
+night_mode:
+  enable: false
+http_post:
+  enable: false
+audio:
+  enable: true
+  bitrate: 32
+  gain: 30
+  srate: 8000
+mp4:
+  enable: true
+  codec: H264
+  mode: CBR
+  width: 1280
+  height: 720
+  fps: 25
+  gop: 25
+  bitrate: 2048
+  profile: 0
+jpeg:
+  enable: false
+mjpeg:
+  enable: false

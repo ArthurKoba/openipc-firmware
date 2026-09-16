@@ -1,0 +1,5 @@
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include "../integration/fh8626_mp4_generation.h"
+int main(void){struct fh_mp4_codec_generation g;struct fh_mp4_sink_generation s;memset(&g,0,sizeof(g));uint8_t sps[]={0x67,100,0,40,1},pps[]={0x68,1};assert(fh_mp4_codec_update(&g,sps,sizeof(sps),pps,sizeof(pps))==1);assert(g.avcc_profile==100&&g.avcc_level==40);assert(fh_mp4_codec_set_header(&g,g.generation,99)==0);fh_mp4_sink_init(&s,7);assert(fh_mp4_sink_accept_header(&s,&g,g.generation,0)<0);assert(fh_mp4_sink_accept_header(&s,&g,g.generation,99)==0);struct fh_mp4_sample_snapshot x;memset(&x,0,sizeof(x));x.valid=1;x.key=0;assert(fh_mp4_sink_accept_sample(&s,&g,&x)<0);x.key=1;assert(fh_mp4_sink_accept_sample(&s,&g,&x)==0);sps[4]=2;assert(fh_mp4_codec_update(&g,sps,sizeof(sps),pps,sizeof(pps))==1);fh_mp4_sink_sync_generation(&s,&g);assert(!s.header_sent&&s.waiting_idr);char name[64];assert(fh_mp4_segment_name(name,sizeof(name),"record",7,3)==0&&strstr(name,".7.3.mp4"));puts("test_mp4_generation: PASS");return 0;}

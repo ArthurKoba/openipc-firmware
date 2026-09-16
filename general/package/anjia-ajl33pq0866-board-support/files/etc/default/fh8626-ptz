@@ -1,0 +1,9 @@
+# Re-establish both physical axis references in the background on every boot,
+# then return to the last valid saved coordinates. With no valid state, use
+# the third coordinate from pan_range/tilt_range. The reference pass is still
+# mandatory because the camera may be moved while unpowered.
+PTZ_ENABLED=1
+PTZ_INITMOVE=1
+# Empty uses /etc/openipc/ptz.state. Set only after verifying a persistent
+# rootfs_data mount on pure initramfs boots.
+PTZ_STATE_FILE=

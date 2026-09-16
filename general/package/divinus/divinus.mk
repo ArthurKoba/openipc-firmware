@@ -4,8 +4,12 @@
 #
 ################################################################################
 
-DIVINUS_SITE = $(call github,openipc,divinus,$(DIVINUS_VERSION))
-DIVINUS_VERSION = HEAD
+# Divinus is a local canonical source-of-truth in this workspace.  The
+# platform integration is already in that tree; avoid a remote fetch of an
+# unpublished fork commit and avoid applying the same feature patch twice.
+DIVINUS_SITE = $(BR2_EXTERNAL_GENERAL_PATH)/../../divinus
+DIVINUS_SITE_METHOD = local
+DIVINUS_VERSION = local
 DIVINUS_LICENSE = MIT
 DIVINUS_LICENSE_FILES = LICENSE
 

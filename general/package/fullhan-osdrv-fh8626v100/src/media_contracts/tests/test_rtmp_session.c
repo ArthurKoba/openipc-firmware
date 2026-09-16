@@ -1,0 +1,5 @@
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
+#include "../transport/fh8626_rtmp_session.h"
+int main(void){struct fh_rtmp_session s;const struct fh_rtmp_packet*p;char k='K',d[3]={'D','D','D'};fh_rtmp_session_init(&s,3);assert(fh_rtmp_session_start(&s)==0&&fh_rtmp_session_ready(&s)==0);assert(fh_rtmp_session_enqueue(&s,FH_RTMP_VIDEO,1,0,d,1,NULL)==-EAGAIN);uint64_t keyseq;assert(fh_rtmp_session_enqueue(&s,FH_RTMP_VIDEO,1,1,&k,1,&keyseq)==0);assert(fh_rtmp_session_enqueue(&s,FH_RTMP_VIDEO,1,0,d,1,NULL)==-EAGAIN);/* IDR not sent yet */assert(fh_rtmp_session_take(&s,&p)==1&&p->seq==keyseq);assert(fh_rtmp_session_send_result(&s,0)==0&&!s.need_idr);assert(fh_rtmp_session_enqueue(&s,FH_RTMP_VIDEO,1,0,d,3,NULL)==0);assert(fh_rtmp_session_enqueue(&s,FH_RTMP_VIDEO,1,0,d,1,NULL)==-ENOSPC&&s.need_idr);assert(fh_rtmp_session_take(&s,&p)==1);assert(fh_rtmp_session_send_result(&s,-EIO)==-EIO&&s.state==FH_RTMP_FAILED&&s.count==0);uint64_t old=s.epoch;assert(fh_rtmp_session_reconnect(&s)==0&&s.epoch==old+1&&s.need_idr);assert(fh_rtmp_session_ready(&s)==0);assert(fh_rtmp_session_remote_eof(&s)==0&&s.state==FH_RTMP_FAILED);puts("test_rtmp_session: PASS");return 0;}

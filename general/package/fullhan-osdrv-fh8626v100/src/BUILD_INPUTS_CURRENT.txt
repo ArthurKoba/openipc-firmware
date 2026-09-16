@@ -1,0 +1,18 @@
+# Generated from Makefile.camera OWNER; verified against package SOURCES.
+# tools/render_isp_status.py --inputs; owner sources only, not audio or SDK libraries.
+media/fh8626_media_owner_v4_3_0.c
+media/fh8626_sidecar_publisher.c
+media/fh8626_geometry.c
+media/fh8626_geometry_linux.c
+isp/fh8626_isp_runtime.c
+ae/fh8626_ae_runtime.c
+ae/fh8626_stock_ae_state_ref.c
+sensor/gc1054/fh8626_sensor_gc1054.c
+awb_ccm/fh8626_stock_awb_mode0_pipeline.c
+awb_ccm/fh8626_stock_awb_mode0_ref.c
+awb_ccm/fh8626_stock_c9f68_ref.c
+diagnostics/fh8626_stock_ca4f4_diag.c
+awb_ccm/fh8626_stock_d1724_ref.c
+board/fh8626_gpio.c
+board/fh8626_board_dualsensor.c
+platform/mmap_uclibc_compat.S

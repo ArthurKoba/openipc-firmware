@@ -1,0 +1,11 @@
+config BR2_PACKAGE_ANJIA_AJL33PQ0866_BOARD_SUPPORT
+	bool "anjia-ajl33pq0866-board-support"
+	depends on BR2_arm
+	help
+	  Board-specific PTZ support for the ANJIA AJL33PQ0866 camera with
+	  Fullhan FH8626V100. Builds the source-based four-channel hardware-PWM
+	  controller, startup position calibration, persistent coordinates, and
+	  the OpenIPC gpio-motors compatibility command.
+
+	  The PWM/GPIO map is specific to this retail camera and must not be
+	  selected by generic FH8626V100 firmware targets.

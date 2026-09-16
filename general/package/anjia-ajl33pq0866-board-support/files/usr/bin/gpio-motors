@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# OpenIPC motor.cgi compatibility. FH8626 speed comes from the stock
+# pan_period/tilt_period board parameters; the generic delay argument is not
+# meaningful for the hardware PWM sequencer.
+if [ "$#" -ne 3 ]; then
+    echo "usage: gpio-motors PAN_STEPS TILT_STEPS DELAY_MS" >&2
+    exit 2
+fi
+
+exec /usr/sbin/fh8626-ptz move "$1" "$2"

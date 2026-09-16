@@ -1,0 +1,65 @@
+#!/bin/sh
+
+DEFAULTS=/etc/default/fh8626-ptz
+LOG=/var/log/fh8626-ptz-init.log
+PIDFILE=/var/run/fh8626-ptz-init.pid
+
+[ -r "$DEFAULTS" ] && . "$DEFAULTS"
+[ "${PTZ_ENABLED:-1}" = "1" ] || exit 0
+[ -z "${PTZ_STATE_FILE:-}" ] || export PTZ_STATE_FILE
+
+running() {
+    [ -r "$PIDFILE" ] || return 1
+    pid="$(cat "$PIDFILE" 2>/dev/null)"
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+stop_init() {
+    if running; then
+        pid="$(cat "$PIDFILE")"
+        kill -TERM "$pid" 2>/dev/null || true
+        count=0
+        while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 50 ]; do
+            sleep 0.1
+            count=$((count + 1))
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "FH8626 PTZ position check did not stop" >&2
+            return 1
+        fi
+    fi
+    rm -f "$PIDFILE"
+}
+
+case "${1:-start}" in
+    start)
+        if running; then
+            echo "FH8626 PTZ position check already running"
+            exit 0
+        fi
+        rm -f "$PIDFILE"
+        if [ "${PTZ_INITMOVE:-1}" = "1" ]; then
+            echo "Starting FH8626 PTZ position check in background"
+            (
+                /usr/sbin/fh8626-ptz startup
+                rc=$?
+                rm -f "$PIDFILE"
+                exit "$rc"
+            ) >>"$LOG" 2>&1 &
+            echo "$!" >"$PIDFILE"
+        else
+            /usr/sbin/fh8626-ptz status >>"$LOG" 2>&1
+        fi
+        ;;
+    stop)
+        stop_init
+        ;;
+    restart)
+        stop_init || exit 1
+        "$0" start
+        ;;
+    *)
+        echo "usage: $0 {start|stop|restart}" >&2
+        exit 2
+        ;;
+esac

@@ -1,29 +1,105 @@
 #!/bin/sh
-dev=$(fw_printenv -n wlandev)
-mac=$(fw_printenv -n wlanmac)
-net=$(fw_printenv -n netaddr_fallback)
-eth=$(fw_printenv -n ethaddr)
+dev=$(fw_printenv -n wlandev 2>/dev/null)
+mac=$(fw_printenv -n wlanmac 2>/dev/null)
+
+# Remove development-only static addresses from early FH8626V100 images.
+# OpenIPC uses ipaddr (normally 192.168.1.10) as the DHCP-failure fallback;
+# netaddr_fallback is not part of the normal wired DHCP contract.
+legacy_fallback=$(fw_printenv -n netaddr_fallback 2>/dev/null)
+case "$legacy_fallback" in
+	192.168.1.203|192.168.1.204)
+		fw_setenv netaddr_fallback ||
+			echo "Unable to remove legacy netaddr_fallback"
+		;;
+esac
+
+boot_ip=$(fw_printenv -n ipaddr 2>/dev/null)
+case "$boot_ip" in
+	192.168.1.203|192.168.1.204)
+		fw_setenv ipaddr 192.168.1.10 ||
+			echo "Unable to normalize legacy U-Boot ipaddr"
+		;;
+esac
+
+# Migrate the early board-port value to the name understood by OpenIPC's
+# wireless loader. Existing installations have /etc/custom.ok, so their
+# customizer is intentionally not run again after an upgrade.
+if [ "$dev" = "rtl8188fu" ]; then
+	dev=rtl8188fu-generic
+	fw_setenv wlandev "$dev" ||
+		echo "Unable to persist migrated wireless profile $dev"
+fi
+
+# An upgraded installation can already have /etc/custom.ok from an older
+# generic image, so the device customizer will not run again to select Wi-Fi.
+# Recover the board profile when its packaged module is present.
+if [ -z "$dev" ] &&
+   find /lib/modules -name 8188fu.ko -type f 2>/dev/null | grep -q .; then
+	dev=rtl8188fu-generic
+	fw_setenv wlandev "$dev" ||
+		echo "Unable to persist wireless profile $dev"
+fi
+
+# A generic FH8626V100 image intentionally carries no board-selected Wi-Fi
+# module. Do not retain a stale RTL8188FU profile when that package is absent.
+case "$dev" in
+	rtl8188fu-generic)
+		if ! find /lib/modules -name 8188fu.ko -type f 2>/dev/null |
+		   grep -q .; then
+			fw_setenv wlandev || echo "Unable to remove unavailable Wi-Fi profile"
+			dev=
+		fi
+		;;
+esac
+
+wait_for_interface() {
+	interface="$1"
+	delay=10
+	while [ ! -e "/sys/class/net/$interface" ] && [ "$delay" -gt 0 ]; do
+		sleep 1
+		delay=$((delay - 1))
+	done
+	[ -e "/sys/class/net/$interface" ]
+}
+
+start_wifi_station() {
+	if ! wait_for_interface wlan0; then
+		echo "Wireless loader succeeded but wlan0 did not appear"
+		return 1
+	fi
+
+	[ -n "$mac" ] && ip link set dev wlan0 address "$mac"
+	if ! fw_printenv -n wlanssid >/dev/null 2>&1 ||
+	   ! fw_printenv -n wlanpass >/dev/null 2>&1; then
+		echo "Wi-Fi credentials are not configured; leaving wlan0 inactive"
+		return 0
+	fi
+
+	ifup wlan0 || {
+		echo "Unable to start Wi-Fi station on wlan0"
+		return 1
+	}
+}
 
 set_wireless() {
 	path=/etc/wireless
 	if $path/usb "$dev" || $path/sdio "$dev"; then
-		[ -n "$mac" ] && ip link set dev wlan0 address "$mac"
-		ifup wlan0
+		start_wifi_station
 	elif $path/modem "$dev"; then
 		ifup usb0
 		ifup eth1
+	else
+		echo "Unsupported wireless device profile: $dev"
+		return 1
 	fi
-	[ -e /sys/class/net/eth0 ] && ifconfig eth0 "${net:-192.168.2.10}" hw ether "${eth:-00:00:23:34:45:66}" up
 }
 
 start() {
 	echo "Starting network..."
 	ifup lo
-	if [ -n "$dev" ]; then
-		set_wireless
-	else
-		ifup eth0
-	fi
+	[ -e /sys/class/net/eth0 ] &&
+		ifup eth0 || echo "Unable to start Ethernet DHCP on eth0"
+	[ -n "$dev" ] && set_wireless
 }
 
 stop() {
@@ -39,12 +115,10 @@ case "$1" in
 	start|stop)
 		$1
 		;;
-
 	restart|reload)
 		stop
 		start
 		;;
-
 	*)
 		echo "Usage: $0 {start|stop|restart|reload}"
 		exit 1

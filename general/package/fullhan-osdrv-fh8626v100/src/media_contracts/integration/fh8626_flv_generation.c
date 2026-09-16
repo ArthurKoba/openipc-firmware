@@ -1,0 +1,9 @@
+#include "fh8626_flv_generation.h"
+#include <errno.h>
+#include <string.h>
+int fh_flv_codec_update(struct fh_flv_codec_generation*g,const uint8_t*sps,size_t sl,const uint8_t*pps,size_t pl,enum fh_flv_bitrate_provenance prov,uint32_t kbps){int ch;if(!g||!sps||!pps||sl<4||pl<2||sl>sizeof(g->sps)||pl>sizeof(g->pps)||(prov!=FH_FLV_RATE_UNKNOWN&&prov!=FH_FLV_RATE_APPLIED_TARGET)||(prov==FH_FLV_RATE_UNKNOWN&&kbps!=0))return -EINVAL;ch=g->sps_len!=sl||g->pps_len!=pl||memcmp(g->sps,sps,sl)||memcmp(g->pps,pps,pl)||g->rate_provenance!=prov||g->bitrate_kbps!=kbps;if(!ch)return 0;if(g->generation==UINT64_MAX)return -EOVERFLOW;memcpy(g->sps,sps,sl);memcpy(g->pps,pps,pl);g->sps_len=sl;g->pps_len=pl;g->avcc_profile=sps[1];g->avcc_compat=sps[2];g->avcc_level=sps[3];g->rate_provenance=prov;g->bitrate_kbps=kbps;g->generation++;return 1;}
+void fh_flv_sink_init(struct fh_flv_sink_generation*s){if(s){memset(s,0,sizeof(*s));s->waiting_idr=1;}}
+void fh_flv_sink_sync(struct fh_flv_sink_generation*s,const struct fh_flv_codec_generation*g){if(!s||!g)return;if(s->codec_generation!=g->generation){s->codec_generation=g->generation;s->metadata_sent=0;s->header_sent=0;s->waiting_idr=1;}}
+int fh_flv_sink_accept_metadata(struct fh_flv_sink_generation*s,const struct fh_flv_codec_generation*g,uint64_t gen,size_t len){if(!s||!g||gen!=g->generation||len==0)return -EINVAL;fh_flv_sink_sync(s,g);s->metadata_sent=1;return 0;}
+int fh_flv_sink_accept_header(struct fh_flv_sink_generation*s,const struct fh_flv_codec_generation*g,uint64_t gen,size_t len){if(!s||!g||gen!=g->generation||len==0)return -EINVAL;fh_flv_sink_sync(s,g);s->header_sent=1;return 0;}
+int fh_flv_sink_accept_video(struct fh_flv_sink_generation*s,const struct fh_flv_codec_generation*g,int key){if(!s||!g)return -EINVAL;fh_flv_sink_sync(s,g);if(!s->metadata_sent||!s->header_sent)return -EAGAIN;if(s->waiting_idr&&!key)return -EAGAIN;if(key)s->waiting_idr=0;return 0;}

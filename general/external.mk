@@ -9,6 +9,7 @@ export WGET := wget --show-progress --passive-ftp -nd -t5 -T10
 
 EXTERNAL_VENDOR := $(BR2_EXTERNAL)/../br-ext-chip-$(OPENIPC_SOC_VENDOR)
 OPENIPC_KERNEL := $(OPENIPC_SOC_VENDOR)-$(OPENIPC_SOC_FAMILY)
+OPENIPC_KERNEL_REPO ?= https://github.com/openipc/linux
 OPENIPC_TOOLCHAIN := toolchain/toolchain.$(OPENIPC_KERNEL)
 
 # Buildroot leaves upstream's wpa_supplicant defconfig defaults for TDLS and

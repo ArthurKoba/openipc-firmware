@@ -1,0 +1,4 @@
+#include <assert.h>
+#include <stdio.h>
+#include "../integration/fh8626_flv_generation.h"
+int main(void){struct fh_flv_codec_generation g={0};struct fh_flv_sink_generation s;uint8_t sps[]={0x67,77,1,31,9},pps[]={0x68,1};assert(fh_flv_codec_update(&g,sps,sizeof(sps),pps,sizeof(pps),FH_FLV_RATE_UNKNOWN,0)==1);assert(g.avcc_profile==77&&g.avcc_compat==1&&g.avcc_level==31);fh_flv_sink_init(&s);assert(fh_flv_sink_accept_metadata(&s,&g,g.generation,10)==0);assert(fh_flv_sink_accept_header(&s,&g,g.generation,20)==0);assert(fh_flv_sink_accept_video(&s,&g,0)<0);assert(fh_flv_sink_accept_video(&s,&g,1)==0);sps[4]=8;assert(fh_flv_codec_update(&g,sps,sizeof(sps),pps,sizeof(pps),FH_FLV_RATE_APPLIED_TARGET,2000)==1);fh_flv_sink_sync(&s,&g);assert(!s.metadata_sent&&!s.header_sent&&s.waiting_idr);assert(fh_flv_sink_accept_header(&s,&g,g.generation-1,20)<0);puts("test_flv_generation: PASS");return 0;}

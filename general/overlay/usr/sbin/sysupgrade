@@ -845,6 +845,7 @@ check_sdcard() {
 	stoplist="autoupdate-kernel.img autoupdate-rootfs.img autoupdate-uboot.img"
 	while [ -n "$(mount | grep /mnt/mmc)" ]; do
 		local d=$(mount | grep /mnt/mmc | tail -1 | awk '{print $3}')
+		local dev=$(mount | awk -v point="$d" '$3 == point { print $1; exit }')
 		echo_c 34 "$d"
 		local f
 		for f in $stoplist; do
@@ -855,7 +856,11 @@ check_sdcard() {
 				exit 1
 			fi
 		done
-		umount $d
+		if [ -n "$dev" ] && [ -x /usr/share/openipc/automount-hook ]; then
+			/usr/share/openipc/automount-hook remove "$dev" "$d" ||
+				echo_c 33 "Storage pre-unmount hook failed for $d"
+		fi
+		umount "$d"
 	done
 }
 

@@ -1,0 +1,91 @@
+# Architecture
+BR2_arm=y
+BR2_arm1176jzf_s=y
+BR2_ARM_EABI=y
+
+# Local toolchain
+BR2_REPRODUCIBLE=y
+BR2_TOOLCHAIN_BUILDROOT_VENDOR="openipc"
+BR2_TOOLCHAIN_BUILDROOT_MUSL=y
+BR2_KERNEL_HEADERS_VERSION=y
+BR2_DEFAULT_KERNEL_VERSION="4.9.129"
+BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_4_9=y
+BR2_GCC_VERSION_13_X=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+
+# Kernel
+# The firmware repository supplies the native FH8626V100 patch series and this
+# generic kernel config over a pinned upstream kernel commit. Board GPIO policy
+# does not belong in the generic kernel.
+# AJL33PQ0866-specific exceptions (unvalidated RTC and GC1054 reset wiring) are
+# documented in the kernel option help and this device overlay respectively.
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="https://github.com/openipc/linux/archive/ee1ef844294bfa1ff15b2f0522d35c987a16a220.tar.gz"
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL)/../br-ext-chip-fullhan/board/fh8626v100/fh8626v100.generic.config"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL)/../br-ext-chip-fullhan/board/fh8626v100/anjia-ajl33pq0866/kernel.config"
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL)/package/all-patches $(BR2_EXTERNAL)/../br-ext-chip-fullhan/board/fh8626v100/kernel-patches"
+BR2_LINUX_KERNEL_UIMAGE=y
+BR2_LINUX_KERNEL_XZ=y
+
+# Filesystem
+# CPIO is retained for non-destructive TFTP bring-up; SquashFS/XZ is the final
+# 8 MiB NOR format and keeps the firmware inside the stock partition budget.
+BR2_PACKAGE_BUSYBOX_CONFIG="$(BR2_EXTERNAL)/package/busybox/busybox.config"
+BR2_PACKAGE_UBOOT_TOOLS=y
+BR2_PACKAGE_ZLIB=y
+# FAT32 is the compact baseline for this 8 MiB camera.  Ship an offline checker
+# as well as the kernel driver so an unclean removable card can be diagnosed
+# without silently repairing it while mounted.
+BR2_PACKAGE_DOSFSTOOLS=y
+BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
+# BR2_PACKAGE_IFUPDOWN_SCRIPTS is not set
+# The soldered USB adapter identifies as 0bda:f179 (RTL8188FU). Wireless Tools
+# is included because this small image has no `iw`, and `iwlist` is sufficient
+# for the hardware-proven scan smoke test.
+BR2_PACKAGE_WIRELESS_TOOLS=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE=y
+BR2_PACKAGE_WPA_SUPPLICANT_WEXT=y
+BR2_TARGET_ROOTFS_CPIO=y
+BR2_TARGET_ROOTFS_SQUASHFS=y
+BR2_TARGET_ROOTFS_SQUASHFS4_XZ=y
+
+# OpenIPC
+BR2_OPENIPC_SOC_VENDOR="fullhan"
+BR2_OPENIPC_SOC_MODEL="fh8626v100"
+BR2_OPENIPC_SOC_FAMILY="fh8626v100"
+BR2_OPENIPC_VARIANT="lite"
+BR2_OPENIPC_FLASH_SIZE="8"
+
+# Packages
+BR2_PACKAGE_DROPBEAR_OPENIPC=y
+BR2_PACKAGE_DROPBEAR_OPENIPC_DISABLE_REVERSEDNS=y
+# FH8626 has no usable hardware RNG and reached CRNG readiness only after about
+# 129 seconds without an entropy daemon. haveged brings CRNG up in ~5 seconds,
+# preventing first-boot Dropbear host-key generation from blocking SSH.
+BR2_PACKAGE_HAVEGED=y
+# Native FH8626 media stack: proprietary kernel modules and ARC firmware plus
+# the GC1054 plug-in/profile and the source-built OpenIPC media owner.
+BR2_PACKAGE_FULLHAN_OSDRV_FH8626V100=y
+BR2_PACKAGE_ANJIA_AJL33PQ0866_BOARD_SUPPORT=y
+BR2_PACKAGE_DIVINUS=y
+BR2_PACKAGE_IPCTOOL=y
+# ipctool is intentionally shipped as the standard OpenIPC extutils wrapper:
+# it downloads the current upstream binary on first use instead of freezing a
+# diagnostic utility in the 8 MiB board image.  The compact OpenIPC curl build
+# and mbedTLS backend provide the HTTPS transport used by that wrapper.
+BR2_PACKAGE_LIBCURL_OPENIPC=y
+BR2_PACKAGE_LIBCURL_OPENIPC_CURL=y
+BR2_PACKAGE_LIBCURL_OPENIPC_MBEDTLS=y
+# Keep curl limited to the HTTP(S) downloader role required by extutils.
+# BR2_PACKAGE_LIBCURL_OPENIPC_PROXY_SUPPORT is not set
+# BR2_PACKAGE_LIBCURL_OPENIPC_COOKIES_SUPPORT is not set
+# BR2_PACKAGE_LIBCURL_OPENIPC_EXTRA_PROTOCOLS_FEATURES is not set
+BR2_PACKAGE_MBEDTLS_OPENIPC=y
+# Device-profile choice: the board's only USB port is occupied by its proven
+# 0bda:f179 adapter. The generic FH8626V100 firmware does not select this module.
+BR2_PACKAGE_RTL8188FU_OPENIPC=y
+BR2_PACKAGE_YAML_CLI=y

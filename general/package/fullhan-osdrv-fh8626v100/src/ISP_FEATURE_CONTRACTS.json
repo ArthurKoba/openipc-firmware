@@ -1,0 +1,246 @@
+{
+  "schema": 1,
+  "build_evidence": "LAST_VERIFIED_20260905_677f821d_GEOMETRY_TMP_DEPLOYED",
+  "scope": "ISP/media stage1; historical unrelated feature rows explicitly not re-reviewed",
+  "evidence": "workspace/agents/sessions/FH8626-A08-S01-20260830/AWB_STARTUP_AND_LTM_STAGE1_20260905.md",
+  "features": [
+    {
+      "feature": "startup_output_geometry",
+      "implemented": "YES_STARTUP_CH0",
+      "wired": "YES",
+      "default_enabled": "720P_NATIVE_360P_1080P_OPT_IN",
+      "hardware_validated": "677f821d_1080P_SURFACE_SPS_DECODE_PASS_COEFF_READBACK_OPEN",
+      "stock_exact": "BOUNDED_GEOMETRY_NOT_FULL_MODE",
+      "remaining": "Coefficient readback0/512 matches requires clock/readability investigation; image/DDR/all-presets acceptance and full cadence/RC remain; see HARDWARE_GEOMETRY_677F821D_20260905.md",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "setup",
+        "callee": "geometry_setup"
+      }
+    },
+    {
+      "feature": "packaged_owner_v4_3_0",
+      "implemented": "PARTIAL",
+      "wired": "YES",
+      "default_enabled": "YES",
+      "hardware_validated": "677f821d_TMP_1080P_READY_DECODE_PASS_IMAGE_ACCEPTANCE_PENDING",
+      "stock_exact": "NO",
+      "remaining": "Stage1 incomplete; no global stock-parity claim",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "setup",
+        "callee": "isp_regs_720p"
+      }
+    },
+    {
+      "feature": "gpio5_sensor_bootstrap",
+      "implemented": "NOT_IN_OWNER",
+      "wired": "NO",
+      "default_enabled": "NO",
+      "hardware_validated": "COLD_BOOT_OWNER_SEQUENCE_NOT_REVALIDATED",
+      "stock_exact": "UNPROVEN",
+      "remaining": "External board bootstrap dependency; owner only selects GPIO4/14",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "setup",
+        "callee": "prepare_sensor_target"
+      }
+    },
+    {
+      "feature": "board_wide_default",
+      "implemented": "YES",
+      "wired": "YES",
+      "default_enabled": "YES",
+      "hardware_validated": "HISTORICAL_STARTUP_PASS_NOT_FULL_PARITY",
+      "stock_exact": "BOUNDED",
+      "remaining": "Two sensor preparation then wide; GPIO5 external dependency",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "setup",
+        "callee": "fh8626_dualsensor_select"
+      }
+    },
+    {
+      "feature": "dual_sensor_switch",
+      "implemented": "YES",
+      "wired": "YES",
+      "default_enabled": "MANUAL",
+      "hardware_validated": "NEW_SOURCE_NOT_DEPLOYED",
+      "stock_exact": "PARTIAL",
+      "remaining": "GPIO and outer sensor undo errors surfaced; snapshot preflight and readback verified in mocks; hardware and stage2 stream fence remain",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "lens_switch",
+        "callee": "fh8626_dualsensor_select"
+      }
+    },
+    {
+      "feature": "statistics_epoch_E2",
+      "implemented": "YES",
+      "wired": "YES",
+      "default_enabled": "YES",
+      "hardware_validated": "a7f208cd_SCENE_OBSERVATION_NOT_FULL_EPOCH_PROOF",
+      "stock_exact": "BOUNDED",
+      "remaining": "Accepted-cycle counter independent of content hash; torn-snapshot rejection remains",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "isp_control_once",
+        "callee": "fh_isp_runtime_accept_stats_epoch"
+      }
+    },
+    {
+      "feature": "automatic_ae",
+      "implemented": "PARTIAL",
+      "wired": "YES",
+      "default_enabled": "YES",
+      "hardware_validated": "a7f208cd_BRIGHTNESS_IMPROVED_WHITE_CLIPPING_REMAINS",
+      "stock_exact": "PARTIAL",
+      "remaining": "One control slot/history; remaining state providers and init evidence",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "ae_runtime_hook",
+        "callee": "ae_stock_runtime_step"
+      }
+    },
+    {
+      "feature": "awb_ccm_runtime",
+      "implemented": "PARTIAL",
+      "wired": "YES",
+      "default_enabled": "PROFILE_CONTROLLED",
+      "hardware_validated": "a7f208cd_GREEN_HIGHLIGHTS_GONE_NEW_CCM_UNDEPLOYED",
+      "stock_exact": "PARTIAL",
+      "remaining": "Shared dispatcher and startup wired; module/GOT/provider evidence and full scene validation remain",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "awb_runtime_hook",
+        "callee": "fh_stock_awb_dispatch"
+      }
+    },
+    {
+      "feature": "scene_failure_E4",
+      "implemented": "PARTIAL",
+      "wired": "YES",
+      "default_enabled": "YES",
+      "hardware_validated": "TEMP_HELPER_SUCCESS_PARTIAL_FAILURE_ROLLBACK_OPEN",
+      "stock_exact": "NO",
+      "remaining": "Reverse-order command undo and unknown-state failsafe implemented; mechanical/profile hardware atomicity not proven",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "scene_apply",
+        "callee": "set_named_profile"
+      }
+    },
+    {
+      "feature": "iq_publication_E5",
+      "implemented": "PARTIAL",
+      "wired": "YES",
+      "default_enabled": "PROFILE_CONTROLLED",
+      "hardware_validated": "CURRENT_SOURCE_TARGET_PENDING",
+      "stock_exact": "PARTIAL",
+      "remaining": "Profile/MMIO publication is not atomic hardware rollback",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "set_named_profile",
+        "callee": "load_named_profile"
+      }
+    },
+    {
+      "feature": "apc",
+      "implemented": "YES",
+      "wired": "YES",
+      "default_enabled": "PROFILE_CONTROLLED",
+      "hardware_validated": "CURRENT_SOURCE_TARGET_PENDING",
+      "stock_exact": "BOUNDED",
+      "remaining": "Selector rejection retained; whole stock image not certified",
+      "callsite": {
+        "file": "isp/fh8626_isp_runtime.c",
+        "caller": "fh_isp_runtime_tick_with_control_hooks",
+        "callee": "fh_isp_runtime_apply_cdd6c"
+      }
+    },
+    {
+      "feature": "nr3d",
+      "implemented": "PARTIAL",
+      "wired": "YES",
+      "default_enabled": "NO_OPT_IN_REQUIRED",
+      "hardware_validated": "DEFAULT_OFF_NEW_LIFECYCLE_TARGET_PENDING",
+      "stock_exact": "NO",
+      "remaining": "Owner off/fresh-epoch/pending/on fence; kernel reset equivalence unproved",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "nr3d_request",
+        "callee": "fh_nr3d_request"
+      }
+    },
+    {
+      "feature": "dynamic_ltm",
+      "implemented": "PARTIAL",
+      "wired": "YES",
+      "default_enabled": "PROFILE_CONTROLLED",
+      "hardware_validated": "CURRENT_SOURCE_TARGET_PENDING",
+      "stock_exact": "PARTIAL",
+      "remaining": "Two summary calls and volatile sampling/RMW order restored; 3376 ARM polynomial vectors and32 full-state fixtures checked; D0B2C mode1 stale highbyte fixed; exhaustive numeric/live DMA epoch parity remains unproved",
+      "callsite": {
+        "file": "isp/fh8626_isp_runtime.c",
+        "caller": "fh_isp_runtime_tick_with_control_hooks",
+        "callee": "fh_isp_runtime_apply_dynamic_ltm"
+      }
+    },
+    {
+      "feature": "ltm_public_control",
+      "implemented": "YES",
+      "wired": "YES",
+      "default_enabled": "MANUAL",
+      "hardware_validated": "HOST_RANDOM_ABI_TESTS_ONLY",
+      "stock_exact": "BOUNDED_API",
+      "remaining": "80-byte API; immediate enable RMW is explicit owner policy",
+      "callsite": {
+        "file": "isp/fh8626_isp_runtime.c",
+        "caller": "fh_isp_runtime_set_ltm_enabled",
+        "callee": "fh_isp_runtime_set_ltm_attr"
+      }
+    },
+    {
+      "feature": "yc",
+      "implemented": "YES",
+      "wired": "YES",
+      "default_enabled": "PROFILE_CONTROLLED",
+      "hardware_validated": "CURRENT_SOURCE_TARGET_PENDING",
+      "stock_exact": "BOUNDED_BODY",
+      "remaining": "D1DB0 active body and coefficient binding implemented; old PARTIAL build label stale",
+      "callsite": {
+        "file": "isp/fh8626_isp_runtime.c",
+        "caller": "fh_isp_runtime_tick_with_control_hooks",
+        "callee": "fh_isp_runtime_apply_d1db0_lut"
+      }
+    },
+    {
+      "feature": "video_encoder_rc",
+      "implemented": "PARTIAL",
+      "wired": "YES",
+      "default_enabled": "PROFILE_CONTROLLED",
+      "hardware_validated": "HISTORICAL_RC_READBACK_NOT_FULL_CONFIG_PARITY",
+      "stock_exact": "PARTIAL",
+      "remaining": "Do not infer all encoder configuration parity; restart epoch is stage2",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "encoder_rc_commit",
+        "callee": "ioctl"
+      }
+    },
+    {
+      "feature": "ae_antiflicker",
+      "implemented": "YES",
+      "wired": "YES",
+      "default_enabled": "PROFILE_CONTROLLED",
+      "hardware_validated": "CURRENT_PIPELINE_50_60_AB_PENDING",
+      "stock_exact": "BOUNDED_ACTUATOR",
+      "remaining": "Actuator arithmetic is not all-lighting flicker acceptance",
+      "callsite": {
+        "file": "media/fh8626_media_owner_v4_3_0.c",
+        "caller": "ae_runtime_hook",
+        "callee": "ae_stock_runtime_step"
+      }
+    }
+  ]
+}

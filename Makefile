@@ -43,6 +43,13 @@ endif
 all: repack-final timer
 
 build: defconfig
+	@# Local package source changes are not part of Buildroot's stamp inputs.
+	@# Rebuild the FH8626 userspace owners explicitly so an ordinary `make all`
+	@# can never repack an older per-package artifact after source edits.
+	@if grep -q '^BR2_PACKAGE_FULLHAN_OSDRV_FH8626V100=y' $(BR_CONF); then \
+		$(BR_MAKE) fullhan-osdrv-fh8626v100-rebuild -j$(shell nproc); fi
+	@if grep -q '^BR2_PACKAGE_ANJIA_AJL33PQ0866_BOARD_SUPPORT=y' $(BR_CONF); then \
+		$(BR_MAKE) anjia-ajl33pq0866-board-support-rebuild -j$(shell nproc); fi
 	@$(BR_MAKE) all -j$(shell nproc)
 
 br-%: defconfig
@@ -52,6 +59,7 @@ defconfig: prepare
 	@echo --- $(or $(CONFIG),$(error variable BOARD not found))
 	@cat $(CONFIG) $(PWD)/general/openipc.fragment > $(BR_CONF)
 	@grep -s '^BR2_GLOBAL_PATCH_DIR=' $(CONFIG) >> $(BR_CONF) || true
+	@grep -s '^BR2_ROOTFS_POST_BUILD_SCRIPT=' $(CONFIG) >> $(BR_CONF) || true
 	@$(BR_MAKE) BR2_DEFCONFIG=$(BR_CONF) defconfig
 
 prepare:
@@ -163,6 +171,8 @@ else
 ifeq ($(BR2_TARGET_ROOTFS_SQUASHFS),y)
 ifeq ($(BR2_OPENIPC_SOC_VENDOR),"rockchip")
 	@$(call PREPARE_REPACK,zboot.img,4096,rootfs.squashfs,8192,nor)
+else ifeq ($(BR2_OPENIPC_SOC_FAMILY),"fh8626v100")
+	@$(call PREPARE_REPACK,uImage,3072,rootfs.squashfs,3776,nor)
 else ifeq ($(BR2_OPENIPC_FLASH_SIZE),"8")
 	@$(call PREPARE_REPACK,uImage,2048,rootfs.squashfs,5120,nor)
 else
@@ -258,9 +268,20 @@ define BUNDLE_SDK
 endef
 
 define PREPARE_REPACK
+	$(if $(1),$(call RESTORE_REPACK_INPUT,$(1)))
+	$(if $(3),$(call RESTORE_REPACK_INPUT,$(3)))
 	$(if $(1),$(call CHECK_SIZE,$(1),$(2)))
 	$(if $(3),$(call CHECK_SIZE,$(3),$(4)))
 	$(call REPACK_FIRMWARE,$(1),$(3),$(5))
+endef
+
+# REPACK_FIRMWARE keeps both Buildroot's canonical image names and the
+# SoC-qualified release names.  Older versions moved the canonical files,
+# which made a second `make all` fail when Buildroot correctly decided that an
+# unchanged kernel/rootfs did not need rebuilding.  Restore inputs produced by
+# an older run before validating their sizes.
+define RESTORE_REPACK_INPUT
+	cd $(TARGET)/images && if test ! -e $(1) && test -e $(1).$(BR2_OPENIPC_SOC_MODEL); then cp -f $(1).$(BR2_OPENIPC_SOC_MODEL) $(1); fi
 endef
 
 # The headroom line exists because "fits" and "only just fits" read the same in
@@ -270,19 +291,24 @@ endef
 # to the shared overlay, which is single-digit KB at a time; a board under that
 # is a couple of ordinary commits from red, and a board over it is not.
 define CHECK_SIZE
-	$(eval FILE_SIZE = $(shell expr $(shell stat -c %s $(TARGET)/images/$(1) || echo 0) / 1024))
-	if test $(FILE_SIZE) -eq 0; then exit 1; fi
-	echo - $(1): [$(FILE_SIZE)KB/$(2)KB]
-	if test $(FILE_SIZE) -gt $(2); then \
-		echo -- size exceeded by: $(shell expr $(FILE_SIZE) - $(2))KB; exit 1; fi
-	if test $(shell expr $(2) - $(FILE_SIZE)) -lt 32; then \
-		echo -- headroom warning: $(1) has $(shell expr $(2) - $(FILE_SIZE))KB left of $(2)KB; fi
+	FILE_SIZE=$$(expr $$(stat -c %s $(TARGET)/images/$(1) 2>/dev/null || echo 0) / 1024); \
+	if test $$FILE_SIZE -eq 0; then \
+		echo -- missing or empty image: $(TARGET)/images/$(1); exit 1; \
+	fi; \
+	echo - $(1): [$$FILE_SIZE'KB/$(2)KB']; \
+	if test $$FILE_SIZE -gt $(2); then \
+		echo -- size exceeded by: $$(expr $$FILE_SIZE - $(2))KB; exit 1; \
+	fi; \
+	HEADROOM=$$(expr $(2) - $$FILE_SIZE); \
+	if test $$HEADROOM -lt 32; then \
+		echo -- headroom warning: $(1) has $$HEADROOM'KB left of $(2)KB'; \
+	fi
 endef
 
 define REPACK_FIRMWARE
-	cd $(TARGET)/images && if test -e rootfs.tar; then mv -f rootfs.tar rootfs.$(BR2_OPENIPC_SOC_MODEL).tar; fi
-	$(if $(1),cd $(TARGET)/images && if test -e $(1); then mv -f $(1) $(1).$(BR2_OPENIPC_SOC_MODEL); fi)
-	$(if $(2),cd $(TARGET)/images && if test -e $(2); then mv -f $(2) $(2).$(BR2_OPENIPC_SOC_MODEL); fi)
+	cd $(TARGET)/images && if test -e rootfs.tar; then cp -f rootfs.tar rootfs.$(BR2_OPENIPC_SOC_MODEL).tar; fi
+	$(if $(1),cd $(TARGET)/images && if test -e $(1); then cp -f $(1) $(1).$(BR2_OPENIPC_SOC_MODEL); fi)
+	$(if $(2),cd $(TARGET)/images && if test -e $(2); then cp -f $(2) $(2).$(BR2_OPENIPC_SOC_MODEL); fi)
 	$(if $(1),cd $(TARGET)/images && md5sum $(1).$(BR2_OPENIPC_SOC_MODEL) > $(1).$(BR2_OPENIPC_SOC_MODEL).md5sum)
 	$(if $(2),cd $(TARGET)/images && md5sum $(2).$(BR2_OPENIPC_SOC_MODEL) > $(2).$(BR2_OPENIPC_SOC_MODEL).md5sum)
 	$(if $(1),$(eval KERNEL = $(1).$(BR2_OPENIPC_SOC_MODEL) $(1).$(BR2_OPENIPC_SOC_MODEL).md5sum),$(eval KERNEL =))

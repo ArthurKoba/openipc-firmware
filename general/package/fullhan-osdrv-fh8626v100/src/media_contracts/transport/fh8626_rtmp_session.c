@@ -1,0 +1,14 @@
+#include "fh8626_rtmp_session.h"
+#include <errno.h>
+#include <string.h>
+static void purge(struct fh_rtmp_session*s){s->head=0;s->count=0;s->queued_bytes=0;s->in_flight=0;memset(s->q,0,sizeof(s->q));}
+void fh_rtmp_session_init(struct fh_rtmp_session*s,size_t lim){if(!s)return;memset(s,0,sizeof(*s));s->state=FH_RTMP_DISCONNECTED;s->epoch=1;s->next_seq=1;s->byte_limit=lim;s->need_idr=1;s->recovery_boundary_seq=1;}
+int fh_rtmp_session_start(struct fh_rtmp_session*s){if(!s||s->state!=FH_RTMP_DISCONNECTED)return -EINVAL;s->state=FH_RTMP_STARTING;return 0;}
+int fh_rtmp_session_ready(struct fh_rtmp_session*s){if(!s||s->state!=FH_RTMP_STARTING)return -EINVAL;s->state=FH_RTMP_READY;return 0;}
+static void note_video_loss(struct fh_rtmp_session*s){s->need_idr=1;s->recovery_boundary_seq=s->next_seq;}
+int fh_rtmp_session_enqueue(struct fh_rtmp_session*s,enum fh_rtmp_packet_type type,uint64_t gen,int key,const void*bytes,size_t size,uint64_t*seq){struct fh_rtmp_packet*p;uint64_t id;if(!s||s->state!=FH_RTMP_READY||!bytes||!size||size>FH_RTMP_PACKET_MAX)return -EINVAL;if(type==FH_RTMP_VIDEO&&s->need_idr&&!key)return -EAGAIN;if(s->count==FH_RTMP_QUEUE_SLOTS||size>s->byte_limit-s->queued_bytes){if(type==FH_RTMP_VIDEO)note_video_loss(s);return -ENOSPC;}if(s->next_seq==UINT64_MAX)return -EOVERFLOW;id=s->next_seq++;p=&s->q[(s->head+s->count)%FH_RTMP_QUEUE_SLOTS];memset(p,0,sizeof(*p));p->seq=id;p->epoch=s->epoch;p->codec_generation=gen;p->type=type;p->key=key?1:0;p->size=size;memcpy(p->bytes,bytes,size);s->count++;s->queued_bytes+=size;if(seq)*seq=id;return 0;}
+int fh_rtmp_session_take(struct fh_rtmp_session*s,const struct fh_rtmp_packet**p){if(!s||!p||s->state!=FH_RTMP_READY||s->in_flight)return -EINVAL;if(!s->count)return 0;s->in_flight=1;*p=&s->q[s->head];return 1;}
+int fh_rtmp_session_send_result(struct fh_rtmp_session*s,int rc){struct fh_rtmp_packet*p;if(!s||!s->in_flight||!s->count)return -EINVAL;p=&s->q[s->head];if(rc){s->state=FH_RTMP_FAILED;purge(s);s->need_idr=1;return rc;}if(p->type==FH_RTMP_VIDEO&&p->key&&p->seq>=s->recovery_boundary_seq)s->need_idr=0;s->queued_bytes-=p->size;s->head=(s->head+1U)%FH_RTMP_QUEUE_SLOTS;s->count--;s->in_flight=0;return 0;}
+int fh_rtmp_session_remote_eof(struct fh_rtmp_session*s){if(!s||s->state!=FH_RTMP_READY)return -EINVAL;s->state=FH_RTMP_FAILED;purge(s);s->need_idr=1;return 0;}
+int fh_rtmp_session_begin_stop(struct fh_rtmp_session*s){if(!s||(s->state!=FH_RTMP_READY&&s->state!=FH_RTMP_STARTING))return -EINVAL;s->state=FH_RTMP_STOPPING;return 0;}
+int fh_rtmp_session_reconnect(struct fh_rtmp_session*s){if(!s||(s->state!=FH_RTMP_FAILED&&s->state!=FH_RTMP_STOPPING&&s->state!=FH_RTMP_DISCONNECTED))return -EINVAL;if(s->epoch==UINT64_MAX)return -EOVERFLOW;purge(s);s->epoch++;s->next_seq=1;s->recovery_boundary_seq=1;s->need_idr=1;s->state=FH_RTMP_STARTING;return 0;}

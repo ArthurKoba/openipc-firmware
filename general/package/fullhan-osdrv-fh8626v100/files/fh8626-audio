@@ -1,0 +1,138 @@
+#!/bin/sh
+set -eu
+
+# FH8626V100 audio control front-end.  DSP transport lives in the compiled
+# helper; board wiring (especially amplifier mute) belongs in the board file.
+DEFAULT_CONFIG=/etc/default/fh8626-audio
+RUNTIME_CONFIG=/tmp/fh8626-audio.conf
+BACKEND=/usr/libexec/fh8626-audio-rtx
+
+FH8626_AUDIO_PROFILE=stock-apollo-ajl33pq0866
+FH8626_AUDIO_CAPTURE_RATE=8000
+FH8626_AUDIO_CAPTURE_PACKET=320
+FH8626_AUDIO_CAPTURE_VOLUME=31
+FH8626_AUDIO_CAPTURE_NR=1
+FH8626_AUDIO_CAPTURE_NR_LEVEL=3
+FH8626_AUDIO_PLAYBACK_RATE=16000
+FH8626_AUDIO_PLAYBACK_PACKET=320
+FH8626_AUDIO_PLAYBACK_VOLUME=31
+FH8626_AUDIO_MUTE_GPIO=255
+FH8626_AUDIO_MUTE_ACTIVE=1
+
+[ ! -r "$DEFAULT_CONFIG" ] || . "$DEFAULT_CONFIG"
+[ ! -r "$RUNTIME_CONFIG" ] || . "$RUNTIME_CONFIG"
+
+export FH8626_AUDIO_CAPTURE_RATE FH8626_AUDIO_CAPTURE_PACKET
+export FH8626_AUDIO_CAPTURE_VOLUME FH8626_AUDIO_CAPTURE_NR
+export FH8626_AUDIO_CAPTURE_NR_LEVEL FH8626_AUDIO_PLAYBACK_RATE
+export FH8626_AUDIO_PLAYBACK_PACKET FH8626_AUDIO_PLAYBACK_VOLUME
+export FH8626_AUDIO_MUTE_GPIO FH8626_AUDIO_MUTE_ACTIVE
+
+die() { echo "ERROR: $*" >&2; exit 2; }
+is_uint() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
+valid_rate()
+{
+	case "$1" in 8000|11025|16000|22050|32000|44100|48000) return 0 ;; esac
+	return 1
+}
+
+gpio_path() { echo "/sys/class/gpio/GPIO$1"; }
+gpio_prepare()
+{
+	[ "$FH8626_AUDIO_MUTE_GPIO" != 255 ] || die "this board has no amplifier-mute GPIO configured"
+	echo "mux,GPIO$FH8626_AUDIO_MUTE_GPIO,GPIO$FH8626_AUDIO_MUTE_GPIO,0" > /proc/driver/pinctrl
+	path="$(gpio_path "$FH8626_AUDIO_MUTE_GPIO")"
+	if [ ! -d "$path" ]; then
+		echo "$FH8626_AUDIO_MUTE_GPIO" > /sys/class/gpio/export 2>/dev/null || true
+	fi
+	i=0
+	while [ ! -d "$path" ] && [ "$i" -lt 50 ]; do sleep 0.01; i=$((i + 1)); done
+	[ -d "$path" ] || die "GPIO$FH8626_AUDIO_MUTE_GPIO was not exported"
+	# Claim the output already at the safe mute level; do not create a pop-sized
+	# window between changing direction and asserting mute.
+	[ "$FH8626_AUDIO_MUTE_ACTIVE" = 1 ] && echo high > "$path/direction" || echo low > "$path/direction"
+}
+
+mute_set()
+{
+	gpio_prepare
+	case "$1" in
+	on) value="$FH8626_AUDIO_MUTE_ACTIVE" ;;
+	off) value=$((1 - FH8626_AUDIO_MUTE_ACTIVE)) ;;
+	*) die "mute expects on or off" ;;
+	esac
+	echo "$value" > "$(gpio_path "$FH8626_AUDIO_MUTE_GPIO")/value"
+}
+
+show_info()
+{
+	echo "profile=$FH8626_AUDIO_PROFILE transport=rtxbus format=s16le channels=1 encoding=pcm"
+	echo "capture rate=$FH8626_AUDIO_CAPTURE_RATE packet=$FH8626_AUDIO_CAPTURE_PACKET volume=$FH8626_AUDIO_CAPTURE_VOLUME nr=$FH8626_AUDIO_CAPTURE_NR nr_level=$FH8626_AUDIO_CAPTURE_NR_LEVEL"
+	echo "playback rate=$FH8626_AUDIO_PLAYBACK_RATE packet=$FH8626_AUDIO_PLAYBACK_PACKET volume=$FH8626_AUDIO_PLAYBACK_VOLUME"
+	echo "mute gpio=$FH8626_AUDIO_MUTE_GPIO active=$FH8626_AUDIO_MUTE_ACTIVE"
+	echo "rates=8000,11025,16000,22050,32000,44100,48000 width=16 packet=32..2048(step4) volume=0..31"
+	echo "validated=capture:8000,playback:8000+16000,nr:1/3,mute:GPIO24-active-high-on-AJL33PQ0866"
+	[ ! -r "$RUNTIME_CONFIG" ] || echo "runtime_overrides=$RUNTIME_CONFIG"
+}
+
+set_value()
+{
+	name="$1" value="$2"
+	case "$name" in
+	capture_rate) valid_rate "$value" || die "unsupported rate"; key=FH8626_AUDIO_CAPTURE_RATE ;;
+	playback_rate) valid_rate "$value" || die "unsupported rate"; key=FH8626_AUDIO_PLAYBACK_RATE ;;
+	capture_packet|playback_packet)
+		is_uint "$value" && [ "$value" -ge 32 ] && [ "$value" -le 2048 ] && [ $((value % 4)) -eq 0 ] || die "packet must be 32..2048 and divisible by 4"
+		[ "$name" = capture_packet ] && key=FH8626_AUDIO_CAPTURE_PACKET || key=FH8626_AUDIO_PLAYBACK_PACKET ;;
+	capture_volume|playback_volume)
+		is_uint "$value" && [ "$value" -le 31 ] || die "volume must be 0..31"
+		[ "$name" = capture_volume ] && key=FH8626_AUDIO_CAPTURE_VOLUME || key=FH8626_AUDIO_PLAYBACK_VOLUME ;;
+	capture_nr) case "$value" in 0|1) ;; *) die "capture_nr must be 0 or 1" ;; esac; key=FH8626_AUDIO_CAPTURE_NR ;;
+	capture_nr_level) is_uint "$value" && [ "$value" -le 31 ] || die "capture_nr_level must be 0..31"; key=FH8626_AUDIO_CAPTURE_NR_LEVEL ;;
+	*) die "unknown setting: $name" ;;
+	esac
+	tmp="$RUNTIME_CONFIG.$$"
+	{ [ ! -r "$RUNTIME_CONFIG" ] || grep -v "^$key=" "$RUNTIME_CONFIG" || true; echo "$key=$value"; } > "$tmp"
+	mv "$tmp" "$RUNTIME_CONFIG"
+	echo "$name=$value (runtime; reset with: fh8626-audio reset)"
+}
+
+usage()
+{
+	cat >&2 <<'EOF'
+usage: fh8626-audio info
+       fh8626-audio capture [FILE [BYTES]]
+       fh8626-audio stream
+       fh8626-audio play FILE.raw|-
+       fh8626-audio tone
+       fh8626-audio mute on|off|status
+       fh8626-audio set NAME VALUE
+       fh8626-audio reset
+Raw file or stdin playback must match the configured mono signed-16-bit rate.
+EOF
+	exit 2
+}
+
+[ -x "$BACKEND" ] || die "$BACKEND is missing"
+case "${1:-}" in
+info) show_info ;;
+capture) exec "$BACKEND" "${2:-/tmp/fh-mic-s16le.raw}" "${3:-64000}" ;;
+stream) exec "$BACKEND" stream ;;
+play) [ "$#" -eq 2 ] || usage; exec "$BACKEND" play-file "$2" ;;
+tone) exec "$BACKEND" play ;;
+mute)
+	case "${2:-}" in
+	on|off) mute_set "$2" ;;
+	status)
+		[ "$FH8626_AUDIO_MUTE_GPIO" != 255 ] || die "this board has no amplifier-mute GPIO configured"
+		path="$(gpio_path "$FH8626_AUDIO_MUTE_GPIO")"
+		[ -d "$path" ] || { echo "mute=unknown gpio=$FH8626_AUDIO_MUTE_GPIO exported=0"; exit 0; }
+		value="$(cat "$path/value")"
+		[ "$value" = "$FH8626_AUDIO_MUTE_ACTIVE" ] && state=on || state=off
+		echo "mute=$state gpio=$FH8626_AUDIO_MUTE_GPIO value=$value active=$FH8626_AUDIO_MUTE_ACTIVE" ;;
+	*) usage ;;
+	esac ;;
+set) [ "$#" -eq 3 ] || usage; set_value "$2" "$3" ;;
+reset) rm -f "$RUNTIME_CONFIG"; echo "runtime audio overrides removed" ;;
+*) usage ;;
+esac

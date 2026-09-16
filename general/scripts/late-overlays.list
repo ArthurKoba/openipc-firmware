@@ -1,2 +1,3 @@
 # config-symbol:overlay-relative-path
 BR2_PACKAGE_OPENIPC_NFS_ROOT:package/openipc-nfs-root/overlay
+BR2_PACKAGE_ANJIA_AJL33PQ0866_BOARD_SUPPORT:package/anjia-ajl33pq0866-board-support/overlay

@@ -1,17 +1,22 @@
 #!/bin/sh
 
-case "$1" in
-	start)
-		echo "Loading vendor modules..."
-		vendor=$(ipcinfo -v)
-		load_"$vendor" -i
-		;;
-
-	stop)
-		;;
-
-	*)
-		echo "Usage: $0 {start}"
-		exit 1
-		;;
-esac
+# FH8626 media loading is board-controlled because GPIO5 is the shared cold
+# reset for both GC1054 sensors on this ANJIA board.  The board helper keeps
+# that wiring out of the generic SoC module loader while preserving the
+# hardware-proven LOW -> load modules -> HIGH sequence.
+#
+# Stock PQEWN-01 also switches pad66 to GPIO61 before monitoring its reset
+# button. The board uses one-bit SD0, so SD0_DATA_1 is free. Export the pin as
+# an active-low input, but do not attach a destructive factory-reset action
+# until the writable persistence contract is finalized.
+echo "mux,GPIO61,GPIO61,0" > /proc/driver/pinctrl
+[ -d /sys/class/gpio/GPIO61 ] || echo 61 > /sys/class/gpio/export
+echo in > /sys/class/gpio/GPIO61/direction
+/usr/sbin/fh-anjia-ajl33pq0866-light init
+# Do not block the global rcS loop on ARC firmware/module initialization.
+# S71 waits for the media device nodes, while networking and diagnostics remain
+# reachable even when a media module stalls or fails.
+/usr/sbin/fh-anjia-ajl33pq0866-media-start \
+	>>/var/log/fh8626-media-bootstrap.log 2>&1 &
+echo "$!" > /var/run/fh8626-media-bootstrap.pid
+exit 0

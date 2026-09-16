@@ -1,0 +1,43 @@
+#!/bin/sh
+set -eu
+
+check_media_devices()
+{
+	missing=0
+	for device in /dev/vmm_userdev /dev/media_process /dev/isp /dev/pae; do
+		if [ ! -c "$device" ]; then
+			echo "ERROR: media module did not create $device" >&2
+			missing=1
+		fi
+	done
+	return "$missing"
+}
+
+if grep -q '^vmm ' /proc/modules; then
+	if check_media_devices; then
+		echo "FH media modules already loaded"
+		exit 0
+	fi
+	echo "ERROR: media modules are only partially loaded; reboot before retrying" >&2
+	exit 1
+fi
+
+echo "Loading FH8626 media modules..."
+modprobe vmm 'mmz=anonymous,0,0xa2700000,25088K' anony=1
+modprobe xbus_rpc fn=/lib/firmware/rtthread_arc.bin fa=0xbff80000
+modprobe media_process
+modprobe isp
+modprobe enc
+modprobe jpeg
+modprobe bgm
+modprobe gpio_wave GW_TIMER_INTERVAL=100
+mdev -s
+# The vendor gpio_wave driver registers misc minor 49 without publishing the
+# sysfs metadata that BusyBox mdev needs.  Stock firmware ships this node
+# statically; recreate it for the RAM rootfs before starting the media owner.
+if [ ! -c /dev/gpiowave8 ]; then
+	mknod /dev/gpiowave8 c 10 49
+	chmod 0660 /dev/gpiowave8
+fi
+check_media_devices
+echo "FH8626 media modules loaded"

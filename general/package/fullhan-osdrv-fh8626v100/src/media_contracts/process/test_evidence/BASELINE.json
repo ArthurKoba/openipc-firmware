@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "generated_utc": "2026-09-10T13:16:54.476461+00:00",
+  "scope": "standalone host verification; no target hardware validation",
+  "standalone_tree_sha256": "a4e8c210247c7f9a81ee77796670be823fb190c03bdec136c98d5d274b4ba8d8",
+  "standalone_indexed_files": 72,
+  "compiler": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "strict_compile": {
+    "status": "PASS",
+    "flags": "-std=c11 -Wall -Wextra -Werror -O2 -pthread",
+    "implementation_c_count": 22
+  },
+  "normal_suites": {
+    "status": "PASS",
+    "count": 23,
+    "suites": [
+      "test_bgm_adapter",
+      "test_bgm_stock_route",
+      "test_bgm_linux_wire",
+      "test_h264_control",
+      "test_nr3d_kernel",
+      "test_nr3d_lifecycle",
+      "test_ghosting_policy",
+      "test_lifecycle_pass_a",
+      "test_lifecycle_pass_b",
+      "test_h264_app_rc",
+      "test_h264_stream",
+      "test_jpeg_stream",
+      "test_jpeg_config",
+      "test_jpeg_lifecycle",
+      "test_mp4_sample",
+      "test_mp4_generation",
+      "test_h264_txn",
+      "test_audio_fanout",
+      "test_flv_generation",
+      "test_rtmp_session",
+      "test_timestamp",
+      "test_bitrate_observer",
+      "test_http_client"
+    ]
+  },
+  "sanitizer_suites": {
+    "status": "PASS",
+    "count": 23,
+    "sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "flags": "-std=c11 -Wall -Wextra -Werror -O1 -g -pthread -fno-omit-frame-pointer -fsanitize=address,undefined",
+    "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
+    "suites": [
+      "test_bgm_adapter",
+      "test_bgm_stock_route",
+      "test_bgm_linux_wire",
+      "test_h264_control",
+      "test_nr3d_kernel",
+      "test_nr3d_lifecycle",
+      "test_ghosting_policy",
+      "test_lifecycle_pass_a",
+      "test_lifecycle_pass_b",
+      "test_h264_app_rc",
+      "test_h264_stream",
+      "test_jpeg_stream",
+      "test_jpeg_config",
+      "test_jpeg_lifecycle",
+      "test_mp4_sample",
+      "test_mp4_generation",
+      "test_h264_txn",
+      "test_audio_fanout",
+      "test_flv_generation",
+      "test_rtmp_session",
+      "test_timestamp",
+      "test_bitrate_observer",
+      "test_http_client"
+    ]
+  },
+  "lifecycle_passes": [
+    "test_lifecycle_pass_a",
+    "test_lifecycle_pass_b"
+  ],
+  "cleanup": {
+    "status": "PASS",
+    "leftover_test_binaries": 0
+  }
+}

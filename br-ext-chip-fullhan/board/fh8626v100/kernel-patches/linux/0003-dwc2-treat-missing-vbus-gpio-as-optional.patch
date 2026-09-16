@@ -1,0 +1,29 @@
+From: OpenIPC <openipc@openipc.org>
+Subject: [PATCH 3/3] usb: dwc2: treat absent VBUS GPIO as optional
+
+Some FH86xx boards power USB VBUS directly and have no controllable
+power-enable GPIO. The existing sentinel already makes that configuration
+a no-op, so do not report it as a warning during every boot.
+
+Signed-off-by: OpenIPC <openipc@openipc.org>
+
+---
+ drivers/usb/dwc2/platform.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/usb/dwc2/platform.c b/drivers/usb/dwc2/platform.c
+--- a/drivers/usb/dwc2/platform.c
++++ b/drivers/usb/dwc2/platform.c
+@@ -279,8 +279,8 @@ static void fh_usb_pwr_on(struct dwc2_hsotg *hsotg)
+ 	pwren_gpio = usb_get_vbus_pwren_gpio(hsotg->dev);
+ 
+ 	if (pwren_gpio == 0xFFFFFFFF) {
+-		dev_warn(hsotg->dev,
+-			"Can't find usb vbus pwren gpio\n");
++		dev_dbg(hsotg->dev,
++			"No controllable USB VBUS power GPIO\n");
+ 		return;
+ 	}
+ 
+-- 
+2.43.0
