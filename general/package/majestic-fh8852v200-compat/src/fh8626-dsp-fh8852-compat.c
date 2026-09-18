@@ -48,11 +48,13 @@
 #define FH8626_PAE_ENC_MEM_SIZE   0xC0145003UL
 #define FH8626_PAE_ENC_MEM_INIT   0xC01C5004UL
 #define FH8626_PAE_SET_CONFIG     0xC02C5006UL
+#define FH8626_PAE_GET_CONFIG     0xC02C5007UL
 #define FH8626_PAE_START_RECV     0xC0045008UL
 #define FH8626_PAE_STOP_RECV      0xC0045009UL
 #define FH8626_PAE_STREAM_STEP    0xC0045011UL
 #define FH8626_PAE_FORCE_I        0xC0045014UL
 #define FH8626_PAE_SET_RC         0xC054502FUL
+#define FH8626_PAE_GET_RC         0xC0545030UL
 
 #define FH8626_ISP_MMIO_PHYS      0xE8400000u
 #define FH8626_ISP_MMIO_SIZE      0x4000u
@@ -1062,6 +1064,89 @@ static int h264_translate_public_rc(uint32_t chn, const uint32_t *a,
         return -EINVAL;
     return 0;
 }
+static int h264_native_rc_to_public(const struct pae_rc *rate,
+                                    uint32_t *a, size_t words)
+{
+    if (!rate || !a || words < 16u)
+        return -EINVAL;
+    memset(a, 0, words * sizeof(*a));
+
+    switch (rate->rc_mode) {
+    case 0u:
+        a[0] = 3u;
+        a[1] = rate->init_qp;
+        a[2] = rate->bitrate_or_rate;
+        a[3] = rate->i_min_qp;
+        a[4] = rate->i_max_qp;
+        a[5] = rate->p_min_qp;
+        a[6] = rate->p_max_qp;
+        a[7] = rate->frame_rate_packed;
+        a[8] = rate->max_rate_percent;
+        a[9] = rate->i_target_limit_bits;
+        a[10] = (uint32_t)rate->ip_qp_delta;
+        a[11] = rate->i_proportion;
+        a[12] = rate->p_proportion;
+        a[13] = rate->fluctuate_level;
+        return 0;
+    case 1u:
+        a[0] = 4u;
+        a[1] = rate->init_qp;
+        a[2] = rate->bitrate_or_rate;
+        a[3] = rate->frame_rate_packed;
+        a[4] = rate->max_rate_percent;
+        a[5] = rate->i_target_limit_bits;
+        a[6] = (uint32_t)rate->ip_qp_delta;
+        a[7] = rate->i_proportion;
+        a[8] = rate->p_proportion;
+        a[9] = rate->fluctuate_level;
+        return 0;
+    case 2u:
+        a[0] = 5u;
+        a[1] = rate->mode2_qp_a;
+        a[2] = rate->mode2_qp_b;
+        a[3] = rate->frame_rate_packed;
+        return 0;
+    case 4u:
+        a[0] = 6u;
+        a[1] = rate->init_qp;
+        a[2] = rate->bitrate_or_rate;
+        a[3] = rate->i_min_qp;
+        a[4] = rate->i_max_qp;
+        a[5] = rate->p_min_qp;
+        a[6] = rate->p_max_qp;
+        a[7] = rate->frame_rate_packed;
+        a[8] = rate->max_rate_percent;
+        a[9] = rate->i_target_limit_bits;
+        a[10] = (uint32_t)rate->ip_qp_delta;
+        a[11] = rate->i_proportion;
+        a[12] = rate->p_proportion;
+        a[13] = rate->fluctuate_level;
+        a[14] = rate->still_rate_percent;
+        a[15] = rate->max_still_qp;
+        return 0;
+    case 5u:
+        a[0] = 0xbu;
+        a[1] = rate->init_qp;
+        a[2] = rate->additional_rate_bits;
+        a[3] = rate->bitrate_or_rate;
+        a[4] = rate->max_rate_percent;
+        a[5] = rate->i_min_qp;
+        a[6] = rate->i_max_qp;
+        a[7] = rate->p_min_qp;
+        a[8] = rate->p_max_qp;
+        a[9] = rate->frame_rate_packed;
+        a[10] = rate->i_target_limit_bits;
+        a[11] = (uint32_t)rate->ip_qp_delta;
+        a[12] = rate->i_proportion;
+        a[13] = rate->p_proportion;
+        a[14] = rate->fluctuate_level;
+        a[15] = rate->extra_qp_parameter;
+        return 0;
+    default:
+        return -ENOTSUP;
+    }
+}
+
 
 int FH_VENC_SetRCAttr(uint32_t chn, const void *attr)
 {
@@ -1078,6 +1163,70 @@ int FH_VENC_SetRCAttr(uint32_t chn, const void *attr)
     if ((rc = open_native()))
         return rc;
     return call_ioctl(pae_fd, FH8626_PAE_SET_RC, &rate);
+}
+
+int FH_VENC_GetChnAttr(uint32_t chn, void *attr)
+{
+    struct pae_cfg cfg;
+    struct pae_rc rate;
+    uint32_t public_rc[16];
+    uint32_t *a = attr;
+    int rc;
+
+    if (!attr || chn != 0)
+        return -EINVAL;
+    if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
+        return strict_stub("FH_VENC_GetChnAttr");
+    if ((rc = open_native()))
+        return rc;
+
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.chn = chn;
+    rc = call_ioctl(pae_fd, FH8626_PAE_GET_CONFIG, &cfg);
+    if (rc)
+        return rc;
+
+    memset(&rate, 0, sizeof(rate));
+    rate.chn = chn;
+    rc = call_ioctl(pae_fd, FH8626_PAE_GET_RC, &rate);
+    if (rc)
+        return rc;
+    rc = h264_native_rc_to_public(&rate, public_rc, 16u);
+    if (rc)
+        return rc;
+
+    memset(a, 0, 37u * sizeof(*a));
+    a[0] = (cfg.field20 || cfg.field24 || cfg.field28 || cfg.mode) ? 8u : 4u;
+    a[1] = cfg.profile;
+    a[2] = cfg.field0c;
+    a[3] = cfg.width;
+    a[4] = cfg.height;
+    if (a[0] == 8u) {
+        a[5] = cfg.field20;
+        a[6] = cfg.field24;
+        a[7] = cfg.field28;
+        a[8] = cfg.mode;
+    }
+
+    a[21] = public_rc[0];
+    switch (public_rc[0]) {
+    case 3u:
+        memcpy(&a[22], &public_rc[1], 13u * sizeof(uint32_t));
+        break;
+    case 4u:
+        memcpy(&a[22], &public_rc[1], 9u * sizeof(uint32_t));
+        break;
+    case 5u:
+        memcpy(&a[22], &public_rc[1], 3u * sizeof(uint32_t));
+        break;
+    case 6u:
+    case 0xbu:
+        memcpy(&a[22], &public_rc[1], 15u * sizeof(uint32_t));
+        break;
+    default:
+        return -ENOTSUP;
+    }
+    return 0;
 }
 
 int FH_VENC_SetRcChangeParam(uint32_t chn, const void *attr)
@@ -1104,8 +1253,22 @@ int FH_VENC_SetRcChangeParam(uint32_t chn, const void *attr)
 
 int FH_VENC_GetRCAttr(uint32_t chn, void *attr)
 {
-    trace_words("FH_VENC_GetRCAttr", chn, attr, 4);
-    return -ENOSYS;
+    struct pae_rc rate;
+    int rc;
+
+    if (!attr || chn != 0)
+        return -EINVAL;
+    if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
+        return strict_stub("FH_VENC_GetRCAttr");
+    if ((rc = open_native()))
+        return rc;
+
+    memset(&rate, 0, sizeof(rate));
+    rate.chn = chn;
+    rc = call_ioctl(pae_fd, FH8626_PAE_GET_RC, &rate);
+    if (rc)
+        return rc;
+    return h264_native_rc_to_public(&rate, attr, 16u);
 }
 
 /* Loader/dlsym compatibility for common optional controls. */
@@ -1131,7 +1294,6 @@ SIMPLE_STUB0(FH_VPSS_SetVOMode)
 SIMPLE_STUB0(FH_VPSS_SetVORotate)
 SIMPLE_STUB0(FH_VPSS_SetScalerCoeff)
 SIMPLE_STUB0(FH_VPSS_SetChnViSel)
-SIMPLE_STUB0(FH_VENC_GetChnAttr)
 SIMPLE_STUB0(FH_VENC_GetChnStatus)
 SIMPLE_STUB0(FH_VENC_GetCurPts)
 SIMPLE_STUB0(FH_VENC_SetH264Entropy)
