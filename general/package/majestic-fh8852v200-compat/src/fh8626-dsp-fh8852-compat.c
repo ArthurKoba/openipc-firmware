@@ -119,6 +119,9 @@ static struct mem3 vpu_sys;
 static struct mem3 vpu_chn[2];
 static struct mem3 pae_sys;
 static struct mem3 pae_chn;
+static uint32_t venc_support_type;
+static uint32_t venc_capacity_width;
+static uint32_t venc_capacity_height;
 static int pae_configured;
 static int media_bound;
 static int stream_lease_held;
@@ -556,11 +559,38 @@ int FH_VENC_QueryChnMem(uint32_t chn, uint32_t width, uint32_t height,
 
 int FH_VENC_CreateChn(uint32_t chn, const void *attr)
 {
+    const uint32_t *a = attr;
+    int rc;
+
     if (chn != 0)
         return -ENOTSUP;
-    trace_words("FH_VENC_CreateChn", chn, attr, attr ? 16 : 0);
-    return env_true("FH8626_MAJESTIC_NATIVE_VENC") ? FH_VENC_SysInitMem()
-                                                    : strict_stub("FH_VENC_CreateChn");
+    if (!attr)
+        return -EINVAL;
+
+    /*
+     * Apollo FH_VENC_CreateChn public record is exactly:
+     *   [0] support_type bitmask
+     *   [1] channel capacity width
+     *   [2] channel capacity height
+     * Normal H.264 is support bit 0x4; smart H.264 is bit 0x8.
+     */
+    trace_words("FH_VENC_CreateChn", chn, attr, 3);
+    if (!(a[0] & (4u | 8u)) || a[1] < 32u || a[2] < 32u)
+        return -EINVAL;
+
+    venc_support_type = a[0];
+    venc_capacity_width = a[1];
+    venc_capacity_height = a[2];
+
+    if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
+        return strict_stub("FH_VENC_CreateChn");
+
+    if (venc_capacity_width < FH8626_WIDTH ||
+        venc_capacity_height < FH8626_HEIGHT)
+        return -ENOTSUP;
+
+    rc = FH_VENC_SysInitMem();
+    return rc;
 }
 
 static int native_venc_fixed_720p(uint32_t chn)
@@ -572,6 +602,10 @@ static int native_venc_fixed_720p(uint32_t chn)
 
     if (chn != 0)
         return -ENOTSUP;
+    if (!(venc_support_type & 4u) ||
+        venc_capacity_width < FH8626_WIDTH ||
+        venc_capacity_height < FH8626_HEIGHT)
+        return -EPIPE;
     if ((rc = open_native()))
         return rc;
     if ((rc = FH_VENC_SysInitMem()))
