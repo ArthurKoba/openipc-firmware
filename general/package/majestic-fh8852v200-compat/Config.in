@@ -10,26 +10,24 @@ config BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT
 	select BR2_PACKAGE_OPUS_OPENIPC
 	select BR2_PACKAGE_OPUS_OPENIPC_FIXED_POINT
 	select BR2_PACKAGE_MAJESTIC_WEBUI
+	select BR2_PACKAGE_MAJESTIC_FONTS
 	help
-	  Experimental FH8626V100 runtime using the FH8852V200 Majestic binary
-	  and a staged source compatibility boundary.
+	  FH8626V100 compatibility runtime for the FH8852V200 Majestic binary.
 
-	  Majestic HTTP/WebUI is untouched and continues to own its normal web
-	  port and control plane directly. This package does not patch frontend
-	  JavaScript, proxy Majestic HTTP, or replace its WebUI/API behavior.
+	  Majestic HTTP/WebUI is untouched and owns its normal ports directly.
+	  The package selects the stock WebUI and Majestic font asset needed by
+	  the OSD feature profile.
 
-	  No FH8852 kernel modules, firmware, load scripts or donor sensor
-	  plug-ins are installed.
+	  Source compatibility covers the active Fullhan feature closure:
+	  GC1054/MIPI, VMM, SYS/VPSS, multi-channel H.264 VENC/RC/stream,
+	  JPEG/MJPEG, motion/YCmean, OSD GraphV2 and RTX audio/VQE.
 
-	  Explicit media bring-up uses source-built FH8626 adapters for:
-	  - FH8852-shaped GC1054 sensor ABI;
-	  - recovered SYS/VPSS/VENC operations;
-	  - FH8626 VMM allocation;
-	  - encoded-stream lease/release;
-	  - recovered RTX audio transport.
+	  Retained donor ISP/ispcore/advapi libraries remain isolated as one
+	  coherent userspace ISP context. No FH8852 kernel modules, firmware,
+	  load scripts or donor sensor plug-ins are installed.
 
-	  The native-video path is deliberately constrained to the recovered
-	  1280x720@25 H.264 Baseline contract. Unknown layouts remain explicit
-	  staging boundaries rather than guessed compatibility.
+	  HEVC/H.265 is explicitly unsupported by the stock FH8626 encoder stack;
+	  unsupported SDK-only calls are errors, not fake-success stubs.
 
-	  This is compatibility staging, not production-ready Majestic support.
+	  Default boot remains media-off. Manual strict/full-feature runners are
+	  provided for target acceptance.
