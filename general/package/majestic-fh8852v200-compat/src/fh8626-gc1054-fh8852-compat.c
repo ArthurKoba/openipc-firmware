@@ -203,6 +203,19 @@ static int native_frame_length(uint32_t *frame_length)
     return 0;
 }
 
+static int native_base_frame_length(uint32_t *frame_length)
+{
+    typedef int (*fn_t)(uint32_t *);
+    fn_t fn = NULL;
+
+    if (!frame_length)
+        return -EINVAL;
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = dlsym(native_handle, "Sensor_GetBaseFrameLength");
+    return fn ? fn(frame_length) : -ENOSYS;
+}
+
 static int native_get_u32(unsigned off, uint32_t *value)
 {
     typedef int (*fn_t)(uint32_t *);
@@ -390,33 +403,31 @@ static int compat_common_if(uint32_t command, void *arg, uint32_t reserved)
 
 static int compat_get_ae_default(uint32_t value[6])
 {
-    uint32_t frame_length;
+    uint32_t base_frame_length;
     uint32_t margin = 5u;
-    uint32_t gain = 0x40u;
     int rc;
 
     if (!value)
         return -EINVAL;
-    rc = native_frame_length(&frame_length);
+    rc = native_base_frame_length(&base_frame_length);
     if (rc)
         return rc;
     if (native_control_query("MAX_INTT_DIFF", &margin))
         margin = 5u;
-    if (native_get_u32(FH8626_GET_GAIN, &gain))
-        gain = 0x40u;
 
     value[0] = 1u; /* selected linear GC1054 path */
-    value[1] = frame_length > margin ? frame_length - margin : 1u;
-    value[2] = gain;
+    value[1] = base_frame_length > margin ? base_frame_length - margin : 1u;
+    value[2] = 0x40u; /* donor sns_cfg default gain, not current runtime gain */
     value[3] = 0u; /* donor-specific max-gain hint is not consumed by libispcore */
-    value[4] = frame_length;
+    value[4] = base_frame_length;
     value[5] = margin;
     return 0;
 }
 
 static int compat_get_ae_info(uint32_t value[4])
 {
-    uint32_t frame_length;
+    uint32_t base_frame_length;
+    uint32_t current_frame_length;
     uint32_t fps10000 = 250000u;
     int rc;
 
@@ -426,13 +437,15 @@ static int compat_get_ae_info(uint32_t value[4])
         return rc;
     if ((rc = native_get_u32(FH8626_GET_GAIN, &value[1])))
         return rc;
-    if ((rc = native_frame_length(&frame_length)))
+    if ((rc = native_base_frame_length(&base_frame_length)))
+        return rc;
+    if ((rc = native_frame_length(&current_frame_length)))
         return rc;
     if (native_control_query("CUR_FRAME_RATE", &fps10000))
         fps10000 = 250000u;
 
-    value[2] = frame_length * ((fps10000 + 5000u) / 10000u);
-    value[3] = frame_length;
+    value[2] = base_frame_length * ((fps10000 + 5000u) / 10000u);
+    value[3] = current_frame_length;
     return 0;
 }
 
