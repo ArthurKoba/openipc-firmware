@@ -38,6 +38,8 @@
 #define FH8626_VPU_SET_CHN_CFG    0xC00C6948UL
 #define FH8626_VPU_OPEN_CHN       0xC004694FUL
 #define FH8626_VPU_ENABLE         0xC004694DUL
+#define FH8626_VPU_DISABLE        0xC004694EUL
+#define FH8626_VPU_CLOSE_CHN      0xC0046950UL
 #define FH8626_VPU_SET_FRAMECTRL  0xC0086954UL
 #define FH8626_VPU_GET_FRAMECTRL  0xC0086955UL
 
@@ -434,8 +436,13 @@ int FH_VPSS_OpenChn(uint32_t chn)
 
 int FH_VPSS_CloseChn(uint32_t chn)
 {
-    (void)chn;
-    return strict_stub("FH_VPSS_CloseChn");
+    int rc;
+
+    if (chn > 4u)
+        return -EINVAL;
+    if ((rc = open_native()))
+        return rc;
+    return call_ioctl(isp_fd, FH8626_VPU_CLOSE_CHN, &chn);
 }
 
 int FH_VPSS_Enable(uint32_t chn)
@@ -453,21 +460,17 @@ int FH_VPSS_Enable(uint32_t chn)
     return call_ioctl(isp_fd, FH8626_VPU_ENABLE, &chn);
 }
 
-int FH_VPSS_Disable(uint32_t chn)
+int FH_VPSS_Disable(void)
 {
     int rc;
 
     /*
-     * Disable is a distinct FH8626 driver operation in the vendor API; the
-     * recovered public wrapper still passes the channel id, not 0/1 state.
-     * Until the exact disable request is wired below, do not alias it to
-     * ENABLE with a zero payload.
+     * Ghidra/isp.ko: 0xC004694E is the distinct global VPU disable request
+     * and does not copy a userspace payload. Do not alias it to Enable(0).
      */
-    if (chn > 4u)
-        return -EINVAL;
     if ((rc = open_native()))
         return rc;
-    return strict_stub("FH_VPSS_Disable");
+    return call_ioctl(isp_fd, FH8626_VPU_DISABLE, NULL);
 }
 
 int FH_VPSS_SetFramectrl(uint32_t chn, const uint16_t pair[2])
