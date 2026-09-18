@@ -612,4 +612,6 @@ void Sensor_Destroy(void)
      * process-owned. Sensor_Create() will reuse this handle and rebuild native_if.
      */
     native_if = NULL;
+    exposure_ratio = 0x100u;
+    memset(awb_gain, 0, sizeof(awb_gain));
 }
