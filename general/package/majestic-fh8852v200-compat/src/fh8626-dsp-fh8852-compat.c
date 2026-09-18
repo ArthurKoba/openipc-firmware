@@ -26,6 +26,10 @@
 #define FH8626_VMM_ALLOC          0xC0686D0AUL
 #define FH8626_MEDIA_BIND         0xC0084D00UL
 #define FH8626_MEDIA_UNBIND_SRC   0xC0044D02UL
+#define FH8626_MEDIA_STREAM       0xC1704D06UL
+#define FH8626_MEDIA_STREAM_KIND  4u
+#define FH8626_MEDIA_DESC_WORDS   92u
+#define FH8852_PUBLIC_STREAM_SIZE 0x140u
 #define FH8626_VPU_MEM_QUERY      0xC0046942UL
 #define FH8626_VPU_SYS_MEM_INIT   0xC00C6940UL
 #define FH8626_VPU_SET_VI_ATTR    0xC0F46946UL
@@ -90,6 +94,8 @@ static struct mem3 pae_sys;
 static struct mem3 pae_chn;
 static int pae_configured;
 static int media_bound;
+static int stream_lease_held;
+static uint32_t stream_desc[FH8626_MEDIA_DESC_WORDS];
 
 static int env_true(const char *name)
 {
@@ -368,38 +374,44 @@ int FH_VPSS_CloseChn(uint32_t chn)
     return strict_stub("FH_VPSS_CloseChn");
 }
 
-int FH_VPSS_Enable(uint32_t enable)
+int FH_VPSS_Enable(uint32_t chn)
 {
+    uint32_t enable = 1;
     int rc;
+
+    if (chn != 0)
+        return -ENOTSUP;
     if ((rc = open_native()))
         return rc;
     return call_ioctl(isp_fd, FH8626_VPU_ENABLE, &enable);
 }
 
-int FH_VPSS_Disable(void)
+int FH_VPSS_Disable(uint32_t chn)
 {
     uint32_t enable = 0;
-    return FH_VPSS_Enable(enable);
-}
-
-int FH_VPSS_SetFramectrl(const uint32_t pair[2])
-{
     int rc;
-    if (!pair)
-        return -EINVAL;
+
+    if (chn != 0)
+        return -ENOTSUP;
     if ((rc = open_native()))
         return rc;
-    return call_ioctl(isp_fd, FH8626_VPU_SET_FRAMECTRL, (void *)pair);
+    return call_ioctl(isp_fd, FH8626_VPU_ENABLE, &enable);
 }
 
-int FH_VPSS_GetFramectrl(uint32_t pair[2])
+int FH_VPSS_SetFramectrl(uint32_t chn, const uint32_t pair[2])
 {
-    int rc;
-    if (!pair)
-        return -EINVAL;
-    if ((rc = open_native()))
-        return rc;
-    return call_ioctl(isp_fd, FH8626_VPU_GET_FRAMECTRL, pair);
+    /*
+     * FH8852 SetFramectrl(chn,{N,D}) is not the same wire as the recovered
+     * FH8626 {chn,packed_fps}. Keep it explicit until the conversion is proved.
+     */
+    trace_words("FH_VPSS_SetFramectrl", chn, pair, 2);
+    return strict_stub("FH_VPSS_SetFramectrl");
+}
+
+int FH_VPSS_GetFramectrl(uint32_t chn, uint32_t pair[2])
+{
+    trace_words("FH_VPSS_GetFramectrl", chn, pair, 2);
+    return strict_stub("FH_VPSS_GetFramectrl");
 }
 
 int FH_VPSS_FreezeVideo(void) { return 0; }
@@ -452,11 +464,11 @@ int FH_VENC_QueryChnMem(uint32_t chn, uint32_t width, uint32_t height,
     return rc;
 }
 
-int FH_VENC_CreateChn(uint32_t chn)
+int FH_VENC_CreateChn(uint32_t chn, const void *attr)
 {
     if (chn != 0)
         return -ENOTSUP;
-    trace_words("FH_VENC_CreateChn", chn, NULL, 0);
+    trace_words("FH_VENC_CreateChn", chn, attr, attr ? 16 : 0);
     return env_true("FH8626_MAJESTIC_NATIVE_VENC") ? FH_VENC_SysInitMem()
                                                     : strict_stub("FH_VENC_CreateChn");
 }
@@ -532,22 +544,117 @@ int FH_VENC_RequestIDR(uint32_t chn)
     return call_ioctl(pae_fd, FH8626_PAE_FORCE_I, &chn);
 }
 
+static int fill_public_stream(void *stream)
+{
+    uint32_t *out = stream;
+    uint32_t virt, len, ts, tail, packs;
+
+    if (!stream || !pae_sys.virt || !pae_sys.size)
+        return -EINVAL;
+    if (stream_desc[1] != FH8626_MEDIA_STREAM_KIND)
+        return -EAGAIN;
+
+    virt = stream_desc[7];
+    len = stream_desc[8];
+    ts = stream_desc[10];
+    if (!len || len > pae_sys.size || virt < pae_sys.virt ||
+        virt >= pae_sys.virt + pae_sys.size)
+        return -ERANGE;
+
+    memset(stream, 0, FH8852_PUBLIC_STREAM_SIZE);
+
+    /*
+     * FH8852 fh_venc_handle_stream() produces this public layout:
+     *   +0x00 kind
+     *   +0x1c pack count
+     *   +0x20 pack[0], 12 bytes each
+     *   +0x130/+0x134 64-bit converted timestamp
+     *
+     * A pack is copied by the donor as {raw+0x30, raw+0x3c, raw+0x38}.
+     * For the FH8626 ring bridge we expose {virtual address, bytes, 0}.
+     * Two packs are used only when the encoded AU wraps around the ring.
+     */
+    out[0x00 / 4] = FH8626_MEDIA_STREAM_KIND;
+    out[0x08 / 4] = virt;
+    out[0x10 / 4] = len;
+    out[0x14 / 4] = ts;
+
+    tail = pae_sys.virt + pae_sys.size - virt;
+    packs = len <= tail ? 1u : 2u;
+    out[0x1c / 4] = packs;
+
+    out[0x20 / 4] = virt;
+    out[0x24 / 4] = len <= tail ? len : tail;
+    out[0x28 / 4] = 0;
+
+    if (packs == 2u) {
+        out[0x2c / 4] = pae_sys.virt;
+        out[0x30 / 4] = len - tail;
+        out[0x34 / 4] = 0;
+    }
+
+    out[0x130 / 4] = ts;
+    out[0x134 / 4] = 0;
+    return 0;
+}
+
+static int acquire_stream(uint32_t chn, void *stream)
+{
+    int rc;
+
+    if (chn != 0 || !stream)
+        return -EINVAL;
+    if (stream_lease_held)
+        return -EBUSY;
+    if ((rc = open_native()))
+        return rc;
+
+    memset(stream_desc, 0, sizeof(stream_desc));
+    stream_desc[0] = FH8626_MEDIA_STREAM_KIND;
+    rc = call_ioctl(media_fd, FH8626_MEDIA_STREAM, stream_desc);
+    if (rc)
+        return rc;
+    rc = fill_public_stream(stream);
+    if (rc) {
+        uint32_t channel = 0;
+        (void)call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &channel);
+        return rc;
+    }
+    stream_lease_held = 1;
+    return 0;
+}
+
 int FH_VENC_GetStream(uint32_t chn, void *stream)
 {
-    trace_words("FH_VENC_GetStream", chn, stream, 8);
-    return -EAGAIN;
+    return acquire_stream(chn, stream);
 }
 
 int FH_VENC_GetStream_Block(uint32_t chn, void *stream)
 {
-    trace_words("FH_VENC_GetStream_Block", chn, stream, 8);
-    return -EAGAIN;
+    /*
+     * FH8626 MEDIA_STREAM is the recovered producer dequeue. The kernel-side
+     * wait semantics of the old FH8852 blocking ioctl do not exist as the same
+     * request; callers may retry on -EAGAIN.
+     */
+    return acquire_stream(chn, stream);
 }
 
 int FH_VENC_ReleaseStream(uint32_t chn, void *stream)
 {
-    trace_words("FH_VENC_ReleaseStream", chn, stream, 8);
-    return env_true("FH8626_MAJESTIC_STUB_OK") ? 0 : -ENOSYS;
+    uint32_t channel = 0;
+    int rc;
+
+    (void)stream;
+    if (chn != 0)
+        return -EINVAL;
+    if (!stream_lease_held)
+        return -EPERM;
+    if ((rc = open_native()))
+        return rc;
+    rc = call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &channel);
+    if (!rc)
+        stream_lease_held = 0;
+    return rc;
 }
 
 int FH_VENC_SetRCAttr(uint32_t chn, const void *attr)
