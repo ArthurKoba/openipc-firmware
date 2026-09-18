@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <time.h>
@@ -241,6 +242,9 @@ int main(void)
             continue;
         }
         if (child == 0) {
+            (void)prctl(PR_SET_PDEATHSIG, SIGTERM);
+            if (getppid() == 1)
+                _exit(0);
             close(fd);
             handle_client(c);
             close(c);
