@@ -129,11 +129,13 @@ static int native_open(void)
     if (!path || !path[0])
         path = "/usr/lib/majestic-fh8626/libgc1054_fh8626_native.so";
 
-    native_handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
     if (!native_handle) {
-        fprintf(stderr, "fh8626-majestic-sensor: dlopen(%s): %s\n",
-                path, dlerror());
-        return -ENOENT;
+        native_handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+        if (!native_handle) {
+            fprintf(stderr, "fh8626-majestic-sensor: dlopen(%s): %s\n",
+                    path, dlerror());
+            return -ENOENT;
+        }
     }
 
     dlerror();
@@ -234,12 +236,9 @@ static int compat_reset(void)
 
 int Sensor_DeInit(void)
 {
-    /*
-     * Native FH8626 plug-in teardown has not been accepted as a reloadable
-     * lifetime. Process exit releases it; do not call the opaque destructor
-     * from the FH8852 lifecycle until the same-boot contract is proven.
-     */
-    return 0;
+    int rc = call0(FH8626_CLOSE);
+
+    return rc == -ENOSYS ? 0 : rc;
 }
 
 static int compat_set_fmt(uint32_t fmt)
@@ -462,6 +461,21 @@ void *Sensor_Create(void)
 
 void Sensor_Destroy(void)
 {
+    typedef void (*destroy_fn)(void);
+    destroy_fn destroy = NULL;
+
+    if (native_handle) {
+        dlerror();
+        *(void **)(&destroy) = dlsym(native_handle, "Sensor_Destroy");
+        if (destroy)
+            destroy();
+    }
+
+    /*
+     * Keep the dlopen handle for same-process re-create. Dropping our pointer
+     * without dlclose leaked a reference on every reload; dlclosing here would
+     * also discard libmipi's mapping bookkeeping while its MMIO mappings remain
+     * process-owned. Sensor_Create() will reuse this handle and rebuild native_if.
+     */
     native_if = NULL;
-    native_handle = NULL;
 }
