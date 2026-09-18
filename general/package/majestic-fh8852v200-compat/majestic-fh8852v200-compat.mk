@@ -102,6 +102,9 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 755 \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-native-video-run \
 		$(TARGET_DIR)/usr/bin/majestic-fh8626-native-video-run
+	$(INSTALL) -m 755 \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-native-av-run \
+		$(TARGET_DIR)/usr/bin/majestic-fh8626-native-av-run
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/etc
 	$(INSTALL) -m 644 \
@@ -111,6 +114,9 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 644 \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-video.yaml \
 		$(TARGET_DIR)/usr/share/majestic-fh8626/majestic-video.yaml
+	$(INSTALL) -m 644 \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-av.yaml \
+		$(TARGET_DIR)/usr/share/majestic-fh8626/majestic-av.yaml
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/etc/init.d
 	$(INSTALL) -m 755 \

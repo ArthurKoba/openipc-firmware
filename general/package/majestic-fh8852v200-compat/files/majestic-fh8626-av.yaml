@@ -1,0 +1,76 @@
+# FH8626V100 Majestic audio/video bring-up profile.
+# Manual test profile only; default boot remains media-off.
+system:
+  webPort: 80
+  httpsPort: 443
+  logLevel: debug
+
+isp:
+  antiFlicker: disabled
+
+image:
+  mirror: false
+  flip: false
+  rotate: 0
+  contrast: 50
+  hue: 50
+  saturation: 50
+  luminance: 50
+
+video0:
+  enabled: true
+  codec: h264
+  size: 1280x720
+  fps: 25
+  bitrate: 4096
+  rcMode: vbr
+  gopSize: 25
+
+video1:
+  enabled: false
+  codec: h264
+
+jpeg:
+  enabled: false
+
+audio:
+  enabled: true
+  volume: 30
+  srate: 8000
+  codec: opus
+  outputEnabled: true
+  outputVolume: 30
+
+rtsp:
+  enabled: true
+  port: 554
+
+osd:
+  enabled: false
+
+nightMode:
+  colorToGray: true
+  irCutSingleInvert: false
+  lightMonitor: false
+  lightSensorInvert: false
+
+motionDetect:
+  enabled: false
+
+records:
+  enabled: false
+
+outgoing:
+  enabled: false
+
+watchdog:
+  enabled: false
+
+hls:
+  enabled: false
+
+mdns:
+  enabled: false
+
+onvif:
+  enabled: false

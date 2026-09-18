@@ -4,7 +4,7 @@ set -eu
 MODE="${1:-strict}"
 shift || true
 
-CONFIG=/usr/share/majestic-fh8626/majestic-video.yaml
+CONFIG="${FH8626_MAJESTIC_CONFIG:-/usr/share/majestic-fh8626/majestic-video.yaml}"
 TARGET=/etc/majestic.yaml
 MOUNTED=0
 
