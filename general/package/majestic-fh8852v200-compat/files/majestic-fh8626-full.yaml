@@ -69,8 +69,24 @@ rtsp:
   port: 554
 
 nightMode:
-  colorToGray: true
+  # Hardware-proven ANJIA AJL33PQ0866 wiring.
+  # GPIO18 drives the DAY/closed direction, GPIO60 the NIGHT/open direction.
+  # The stock board helper uses a 190 ms bistable pulse; express the same
+  # duration in Majestic's legacy microsecond field for this donor build.
+  irCutEnabled: true
+  irCutPin1: 18
+  irCutPin2: 60
+  pinSwitchDelayUs: 190000
   irCutSingleInvert: false
+
+  # Majestic has one switched backlight output on this Fullhan surface. Use the
+  # proven IR LED GPIO25; the separate white LED GPIO23 remains board-helper
+  # owned and is left in its safe OFF/SADC state by S68anjia-hardware.
+  backlightEnabled: true
+  backlightPin: 25
+  backlightInvert: false
+
+  colorToGray: true
   lightMonitor: false
   lightSensorInvert: false
 

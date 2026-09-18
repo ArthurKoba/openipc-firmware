@@ -38,7 +38,8 @@ The default boot remains media-off.
 - `majestic-fh8626-native-av-run`: video/audio discovery profile.
 - `majestic-fh8626-full-run`: final offline acceptance profile. It enables
   native VENC with **no permissive stubs** and exercises main + sub H.264,
-  JPEG snapshot, OSD, motion, capture/playback audio and RTSP together.
+  JPEG snapshot, OSD, motion, capture/playback audio, RTSP and the hardware-
+  proven ANJIA day/night wiring together.
 
 `majestic-fh8626-full-run` bind-mounts the dedicated full-feature YAML only
 for the process lifetime. It does not modify the persistent default config.
@@ -60,3 +61,27 @@ Crop/slice/extra codec SDK functions that are not imported or exposed by the
 current Fullhan Majestic build remain explicit unsupported boundaries. If a
 future moving Majestic begins importing one, the build guard must fail before
 the image reaches hardware.
+
+
+## Board day/night wiring used by the full profile
+
+The named ANJIA target has an independently recovered physical contract:
+
+- IR-cut DAY/closed coil: GPIO18;
+- IR-cut NIGHT/open coil: GPIO60;
+- bistable pulse: 190 ms;
+- IR LED: GPIO25 active high;
+- white LED: GPIO23 active high, shared with SADC1;
+- ambient SADC channel: 1.
+
+The full Majestic profile maps GPIO18/60 to `irCutPin1/irCutPin2`, maps the
+single Majestic backlight output to GPIO25, and uses `pinSwitchDelayUs: 190000`
+to match the board-proven actuator pulse. The separate white LED is not
+pretended to be a second Majestic backlight; it remains owned by the board
+helper and stays in its boot-safe OFF/SADC state unless explicitly requested.
+
+Target acceptance must use Majestic's own day/night controls (`/night/on`,
+`/night/off` or the WebUI filter test) and verify that DAY gives normal colour
+with the filter closed and NIGHT opens the filter and lights GPIO25. If the
+physical direction is observed reversed, stop and re-check the configuration;
+do not compensate by silently swapping the documented board contract.
