@@ -46,6 +46,20 @@
 #define AC_CMD_AO_DIGITAL_VOL 28u
 #define AC_CMD_AI_CLEAR       31u
 #define AC_CMD_AO_CLEAR       32u
+#define AC_CMD_AI_PAUSE       11u
+#define AC_CMD_AI_RESUME      12u
+#define AC_CMD_AO_PAUSE       13u
+#define AC_CMD_AO_RESUME      14u
+#define AC_CMD_AEC_CONFIG     18u
+#define AC_CMD_NR_CONFIG      19u
+#define AC_CMD_PLAY_NR_CONFIG 20u
+#define AC_CMD_AGC_CONFIG     21u
+#define AC_CMD_EXT            23u
+#define AC_CMD_RAW_CONFIG     24u
+#define AC_CMD_BIND           25u
+#define AC_CMD_AI_BUFSIZE     29u
+#define AC_CMD_AO_BUFSIZE     30u
+#define AC_CMD_AI_AO_SYNC     33u
 
 #define FH_AC_E_ARGUMENT ((int)0x8013000fU)
 #define FH_AC_E_RANGE    ((int)0x8013000eU)
@@ -161,6 +175,64 @@ static int unsupported(const char *name)
     if (trace_enabled())
         fprintf(stderr, "fh8626-acw-compat: unsupported %s\n", name);
     return -ENOSYS;
+}
+
+
+static int payload_command(uint32_t id, const void *payload, uint32_t len)
+{
+    uint8_t stack_record[96];
+    uint8_t *record = stack_record;
+    uint32_t storage = len + 16u;
+    uint32_t logical = len + 8u;
+    uint32_t opcode = 0x01040000u | id;
+    int32_t status = 0;
+    int rc;
+
+    if (!payload || !len || ac_fd < 0)
+        return FH_AC_E_ARGUMENT;
+    if (id == AC_CMD_EXT && (int32_t)((const uint32_t *)payload)[0] < 0)
+        opcode |= 0x00018000u;
+
+    if (storage > sizeof(stack_record)) {
+        record = malloc(storage);
+        if (!record)
+            return FH_AC_E_NOMEM;
+    }
+    memset(record, 0, storage);
+    memcpy(record + 0, &logical, 4);
+    *(uint16_t *)(record + 4) = (uint16_t)logical;
+    *(uint16_t *)(record + 6) = (uint16_t)logical;
+    memcpy(record + 8, &opcode, 4);
+    memcpy(record + 16, payload, len);
+
+    rc = command(record);
+    if (!rc)
+        memcpy(&status, record + 12, 4);
+    if (record != stack_record)
+        free(record);
+    return rc ? rc : status;
+}
+
+static int query_value_command(uint32_t id, uint32_t *value)
+{
+    struct ac_simple_command r = {
+        .size = 12,
+        .size_a = 12,
+        .size_b = 12,
+        .opcode = 0x01040000u | id,
+        .value = 0,
+    };
+    int rc;
+
+    if (!value)
+        return FH_AC_E_ARGUMENT;
+    rc = command(&r);
+    if (rc)
+        return rc;
+    if (r.status)
+        return r.status;
+    *value = r.value;
+    return 0;
 }
 
 int FH_AC_Init(void)
@@ -455,15 +527,109 @@ int FH_AC_AI_CH_SetAnologVol(uint32_t chn, uint32_t vol)
         ((chn & 0xffffu) << 16) | (vol & 0xffu));
 }
 
-/* Advanced DSP policies are deliberately not claimed by the compatibility layer. */
-int FH_AC_AEC_SetConfig(void *p) { (void)p; return unsupported("FH_AC_AEC_SetConfig"); }
-int FH_AC_AEC_Change_DefConfig(void *p) { (void)p; return unsupported("FH_AC_AEC_Change_DefConfig"); }
-int FH_AC_AEC_Set_fixedDelay(uint32_t v) { (void)v; return unsupported("FH_AC_AEC_Set_fixedDelay"); }
-int FH_AC_Agc_SetConfig(void *p) { (void)p; return unsupported("FH_AC_Agc_SetConfig"); }
-int FH_AC_Agc_SetConfigExt(void *p) { (void)p; return unsupported("FH_AC_Agc_SetConfigExt"); }
-int FH_AC_NR_SetConfig(void *p) { (void)p; return unsupported("FH_AC_NR_SetConfig"); }
-int FH_AC_PlayAgc_SetConfigExt(void *p) { (void)p; return unsupported("FH_AC_PlayAgc_SetConfigExt"); }
-int FH_AC_PlayNR_SetConfig(void *p) { (void)p; return unsupported("FH_AC_PlayNR_SetConfig"); }
+int FH_AC_AEC_SetConfig(const void *p)
+{
+    return payload_command(AC_CMD_AEC_CONFIG, p, 8u);
+}
+
+int FH_AC_NR_SetConfig(const void *p)
+{
+    return payload_command(AC_CMD_NR_CONFIG, p, 8u);
+}
+
+int FH_AC_PlayNR_SetConfig(const void *p)
+{
+    return payload_command(AC_CMD_PLAY_NR_CONFIG, p, 8u);
+}
+
+int FH_AC_Agc_SetConfig(const void *p)
+{
+    return payload_command(AC_CMD_AGC_CONFIG, p, 8u);
+}
+
+int FH_AC_Ext_Ioctl(const void *p)
+{
+    return payload_command(AC_CMD_EXT, p, 40u);
+}
+
+int FH_AC_AEC_Change_DefConfig(uint32_t a, uint32_t b, uint32_t c)
+{
+    uint32_t ext[10] = {0};
+    ext[0] = 4u;
+    ext[2] = a;
+    ext[3] = b;
+    ext[4] = c;
+    return FH_AC_Ext_Ioctl(ext);
+}
+
+int FH_AC_AEC_Set_fixedDelay(uint32_t v)
+{
+    uint32_t ext[10] = {0};
+    ext[0] = 7u;
+    ext[2] = v;
+    return FH_AC_Ext_Ioctl(ext);
+}
+
+int FH_AC_Agc_SetConfigExt(uint32_t a, uint32_t b,
+                           uint32_t c, uint32_t d)
+{
+    uint32_t cfg[2];
+    cfg[0] = a;
+    cfg[1] = (d | 0x8000u | (c << 8) | ((b << 7) & 0xffu));
+    return FH_AC_Agc_SetConfig(cfg);
+}
+
+int FH_AC_PlayAgc_SetConfigExt(uint32_t a, uint32_t b,
+                               uint32_t c, uint32_t d)
+{
+    uint32_t ext[10] = {0};
+    ext[0] = 8u;
+    ext[2] = d | (c << 8) | (b << 16) | (a << 24);
+    return FH_AC_Ext_Ioctl(ext);
+}
+
+int FH_AC_AI_HPF_Ctrl(uint32_t v)
+{
+    uint32_t ext[10] = {0};
+    ext[0] = 2u;
+    ext[2] = v;
+    return FH_AC_Ext_Ioctl(ext);
+}
+
+int FH_AC_AO_HPF_Ctrl(uint32_t v)
+{
+    uint32_t ext[10] = {0};
+    ext[0] = 3u;
+    ext[2] = v;
+    return FH_AC_Ext_Ioctl(ext);
+}
+
+int FH_AC_AI_PowerDown_MicBias(uint32_t v)
+{
+    uint32_t ext[10] = {0};
+    ext[0] = 6u;
+    ext[2] = v;
+    return FH_AC_Ext_Ioctl(ext);
+}
+
+int FH_AC_AI_Pause(void) { return simple(AC_CMD_AI_PAUSE, 0); }
+int FH_AC_AI_Resume(void) { return simple(AC_CMD_AI_RESUME, 0); }
+int FH_AC_AO_Pause(void) { return simple(AC_CMD_AO_PAUSE, 0); }
+int FH_AC_AO_Resume(void) { return simple(AC_CMD_AO_RESUME, 0); }
+int FH_AC_AI_AO_SYNC_Enable(void) { return simple(AC_CMD_AI_AO_SYNC, 0); }
+
+int FH_AC_AI_QueryBufSize(uint32_t *v)
+{
+    return query_value_command(AC_CMD_AI_BUFSIZE, v);
+}
+
+int FH_AC_AO_QueryBufSize(uint32_t *v)
+{
+    return query_value_command(AC_CMD_AO_BUFSIZE, v);
+}
+
+/* Stock AJL bind policy is -1; command 25 is not part of retail parity. */
+int FH_AC_AI_Bind(void) { return -ENOTSUP; }
 
 const char *FH_AC_Version(void)
 {
@@ -473,20 +639,8 @@ const char *FH_AC_Version(void)
 
 /* Loader-complete optional FH8852 ACW surface. */
 #define AC_STUB0(name) int name(void) { return unsupported(#name); }
-AC_STUB0(FH_AC_AI_AO_SYNC_Enable)
-AC_STUB0(FH_AC_AI_Bind)
 AC_STUB0(FH_AC_AI_HPF_ChangeCoff)
-AC_STUB0(FH_AC_AI_HPF_Ctrl)
-AC_STUB0(FH_AC_AI_Pause)
-AC_STUB0(FH_AC_AI_PowerDown_MicBias)
-AC_STUB0(FH_AC_AI_QueryBufSize)
-AC_STUB0(FH_AC_AI_Resume)
-AC_STUB0(FH_AC_AO_HPF_Ctrl)
-AC_STUB0(FH_AC_AO_Pause)
-AC_STUB0(FH_AC_AO_QueryBufSize)
-AC_STUB0(FH_AC_AO_Resume)
 AC_STUB0(FH_AC_Ext2_Ioctl)
-AC_STUB0(FH_AC_Ext_Ioctl)
 AC_STUB0(FH_AC_Init_WithExternalCodec)
 AC_STUB0(FH_AC_Raw_GetFrameFast)
 AC_STUB0(FH_AC_Raw_SetConfig)
