@@ -21,21 +21,18 @@ MAJESTIC_FH8852V200_COMPAT_DEPENDENCIES = \
 MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBDIR = \
 	$(BR2_EXTERNAL_GENERAL_PATH)/package/fullhan-osdrv-fh8852v200/files/lib
 
-# This is the dependency closure observed on the hardware-proven control-plane
-# experiment. Do not copy the whole FH8852V200 OSDRV package: its kernel
-# modules, firmware, load scripts and unrelated userspace libraries do not
-# belong on FH8626V100.
+# Retained donor userspace closure after source replacements.
+# libdsp/libvmm/libmipi/libacw_mpi and the active GC1054 path are source-built
+# in this package and must not be duplicated by donor fallback copies.
+# No FH8852 kernel modules, firmware or load scripts belong on FH8626V100.
 MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBS = \
 	libadvapi.so \
 	libadvapi_isp.so \
 	libadvapi_md.so \
 	libadvapi_osd.so \
 	libadvapi_smartir.so \
-	libdsp.so \
 	libisp.so \
-	libispcore.so \
-	libmipi.so \
-	libvmm.so
+	libispcore.so
 
 define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
 	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) \
