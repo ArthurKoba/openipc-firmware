@@ -57,10 +57,6 @@
 #define FH8626_PAE_SET_RC         0xC054502FUL
 #define FH8626_PAE_GET_RC         0xC0545030UL
 
-#define FH8626_ISP_MMIO_PHYS      0xE8400000u
-#define FH8626_ISP_MMIO_SIZE      0x4000u
-#define FH8626_ISP_PRODUCER_MASK  0x000FFFFFu
-
 #define FH8626_WIDTH              1280u
 #define FH8626_HEIGHT             720u
 #define FH8626_FPS_PACKED         0x00010019u
@@ -187,43 +183,6 @@ static void *map_phys(uint32_t phys, uint32_t size)
 #endif
 }
 
-
-static int producer_gate(int enable)
-{
-    int fd;
-    volatile uint32_t *regs;
-    uint32_t pending;
-
-    if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
-        return 0;
-    fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
-    if (fd < 0)
-        return -errno;
-#if defined(__arm__)
-    regs = (volatile uint32_t *)(intptr_t)syscall(
-        192, NULL, FH8626_ISP_MMIO_SIZE, PROT_READ | PROT_WRITE,
-        MAP_SHARED, fd, FH8626_ISP_MMIO_PHYS >> 12);
-#else
-    regs = mmap(NULL, FH8626_ISP_MMIO_SIZE, PROT_READ | PROT_WRITE,
-                MAP_SHARED, fd, FH8626_ISP_MMIO_PHYS);
-#endif
-    if ((void *)regs == MAP_FAILED) {
-        close(fd);
-        return -errno;
-    }
-    if (enable) {
-        pending = regs[0x004u / 4u];
-        if (pending)
-            regs[0x004u / 4u] = pending;
-        regs[0x008u / 4u] = FH8626_ISP_PRODUCER_MASK;
-    } else {
-        regs[0x008u / 4u] = 0;
-    }
-    __sync_synchronize();
-    munmap((void *)regs, FH8626_ISP_MMIO_SIZE);
-    close(fd);
-    return 0;
-}
 
 static int alloc_vmm(const char *name, uint32_t need, struct mem3 *mem)
 {
@@ -871,8 +830,6 @@ int FH_VENC_StopRecvPic(uint32_t chn)
             stream_lease_held = 0;
     }
     rc = call_ioctl(pae_fd, FH8626_PAE_STOP_RECV, &chn);
-    if (!rc)
-        pae_configured[chn] = 0;
     return release_rc ? release_rc : rc;
 }
 
