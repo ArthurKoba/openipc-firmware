@@ -40,6 +40,11 @@ define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
 		-o $(@D)/fh8626-majestic-abi-probe \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-majestic-abi-probe.c \
 		-ldl
+	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) -fPIC -shared \
+		-Wl,-soname,libgc1054_mipi.so \
+		-o $(@D)/libgc1054_mipi.so \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-gc1054-fh8852-compat.c \
+		-ldl
 endef
 
 define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
@@ -48,6 +53,10 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/majestic
 	$(INSTALL) -m 755 $(@D)/fh8626-majestic-abi-probe \
 		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/fh8626-majestic-abi-probe
+
+	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/lib/majestic-fh8626
+	$(INSTALL) -m 755 $(@D)/libgc1054_mipi.so \
+		$(TARGET_DIR)/usr/lib/majestic-fh8626/libgc1054_mipi.so
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/lib/majestic-fh8852v200
 	for lib in $(MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBS); do \
@@ -63,6 +72,9 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 755 \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-abi-probe \
 		$(TARGET_DIR)/usr/bin/majestic-fh8626-abi-probe
+	$(INSTALL) -m 755 \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-media-run \
+		$(TARGET_DIR)/usr/bin/majestic-fh8626-media-run
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/etc
 	$(INSTALL) -m 644 \

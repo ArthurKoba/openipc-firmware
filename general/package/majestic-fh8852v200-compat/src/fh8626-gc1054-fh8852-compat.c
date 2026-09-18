@@ -1,0 +1,451 @@
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <errno.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/*
+ * FH8852V200 sensor plug-in facade for the FH8626V100 GC1054 bring-up path.
+ *
+ * This is compatibility staging, not a production sensor backend. FH8852V200
+ * sensor plug-ins expose a 0x7c-byte callback table while the recovered
+ * FH8626V100 GC1054 plug-in exposes a different 0x68-byte table. Passing the
+ * FH8626 table directly to the FH8852 ISP corrupts the ABI boundary.
+ *
+ * The facade translates callbacks whose FH8626 meaning is already recovered.
+ * Unresolved FH8852-only controls are deliberately localized here. By default
+ * they are successful no-ops for bring-up; set FH8626_MAJESTIC_STRICT=1 to
+ * return -ENOSYS instead and expose accidental dependency on a stub.
+ */
+
+#define FH8626_CB_SIZE 0x68u
+#define FH8852_CB_SIZE 0x7cu
+
+enum {
+    FH8626_NAME       = 0x00,
+    FH8626_SET_GAIN   = 0x04,
+    FH8626_GET_VI     = 0x08,
+    FH8626_SET_INTT   = 0x10,
+    FH8626_UPDATE     = 0x14,
+    FH8626_INIT       = 0x28,
+    FH8626_CLOSE      = 0x30,
+    FH8626_SET_FMT    = 0x34,
+    FH8626_KICK       = 0x38,
+    FH8626_WRITE_REG  = 0x3c,
+    FH8626_CONTROL    = 0x4c,
+    FH8626_AWB_QUERY  = 0x58,
+    FH8626_AWB_SET    = 0x5c,
+};
+
+struct fh8852_sensor_if {
+    const char *name;             /* +0x00 */
+    void *get_vi_attr;            /* +0x04 */
+    void *set_flip_mirror;        /* +0x08 */
+    void *get_flip_mirror;        /* +0x0c */
+    void *set_iris;               /* +0x10 */
+    void *init;                   /* +0x14 */
+    void *reset;                  /* +0x18 */
+    void *deinit;                 /* +0x1c */
+    void *set_fmt;                /* +0x20 */
+    void *kick;                   /* +0x24 */
+    void *set_reg;                /* +0x28 */
+    void *set_exposure_ratio;     /* +0x2c */
+    void *get_exposure_ratio;     /* +0x30 */
+    void *get_sensor_attribute;   /* +0x34 */
+    void *set_lane_num_max;       /* +0x38 */
+    void *get_reg;                /* +0x3c */
+    void *get_awb_gain;           /* +0x40 */
+    void *set_awb_gain;           /* +0x44 */
+    void *reserved_48;            /* +0x48 */
+    void *common_if;              /* +0x4c */
+    void *get_ae_default;         /* +0x50 */
+    void *get_ae_info;            /* +0x54 */
+    void *set_intt;               /* +0x58 */
+    void *calc_valid_intt;        /* +0x5c */
+    void *set_gain;               /* +0x60 */
+    void *calc_valid_gain;        /* +0x64 */
+    void *set_frame_h;            /* +0x68 */
+    void *get_mirror_bayer;       /* +0x6c */
+    void *get_user_awb_gain;      /* +0x70 */
+    void *get_ltm_curve;          /* +0x74 */
+    void *is_connect;             /* +0x78 */
+};
+
+_Static_assert(sizeof(void *) == 4, "FH8852 sensor ABI requires 32-bit ARM pointers");
+_Static_assert(sizeof(struct fh8852_sensor_if) == FH8852_CB_SIZE,
+               "FH8852 sensor callback table must be exactly 0x7c bytes");
+
+static void *native_handle;
+static uint8_t *native_if;
+static int strict_mode = -1;
+static uint32_t mirror_flip;
+static uint32_t awb_gain[3];
+
+static int strict(void)
+{
+    const char *value;
+
+    if (strict_mode >= 0)
+        return strict_mode;
+    value = getenv("FH8626_MAJESTIC_STRICT");
+    strict_mode = value && value[0] && strcmp(value, "0");
+    return strict_mode;
+}
+
+static int unresolved(const char *name)
+{
+    if (strict()) {
+        fprintf(stderr, "fh8626-majestic-sensor: unresolved FH8852 callback %s\n",
+                name);
+        return -ENOSYS;
+    }
+    return 0;
+}
+
+static void *native_cb(unsigned off)
+{
+    void *fn = NULL;
+
+    if (!native_if || off + sizeof(fn) > FH8626_CB_SIZE)
+        return NULL;
+    memcpy(&fn, native_if + off, sizeof(fn));
+    return fn;
+}
+
+static int native_open(void)
+{
+    typedef void *(*create_fn)(void);
+    const char *path;
+    create_fn create = NULL;
+
+    if (native_if)
+        return 0;
+
+    path = getenv("FH8626_NATIVE_SENSOR_SO");
+    if (!path || !path[0])
+        path = "/usr/lib/fh8626/libgc1054_mipi.so";
+
+    native_handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    if (!native_handle) {
+        fprintf(stderr, "fh8626-majestic-sensor: dlopen(%s): %s\n",
+                path, dlerror());
+        return -ENOENT;
+    }
+
+    dlerror();
+    *(void **)(&create) = dlsym(native_handle, "Sensor_Create");
+    if (!create) {
+        fprintf(stderr, "fh8626-majestic-sensor: Sensor_Create: %s\n",
+                dlerror());
+        return -ENOENT;
+    }
+
+    native_if = create();
+    if (!native_if)
+        return -EIO;
+    return 0;
+}
+
+static int call0(unsigned off)
+{
+    typedef int (*fn_t)(void);
+    fn_t fn = NULL;
+
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = native_cb(off);
+    return fn ? fn() : -ENOSYS;
+}
+
+static int call1(unsigned off, uintptr_t a0)
+{
+    typedef int (*fn_t)(uintptr_t);
+    fn_t fn = NULL;
+
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = native_cb(off);
+    return fn ? fn(a0) : -ENOSYS;
+}
+
+static int call2(unsigned off, uintptr_t a0, uintptr_t a1)
+{
+    typedef int (*fn_t)(uintptr_t, uintptr_t);
+    fn_t fn = NULL;
+
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = native_cb(off);
+    return fn ? fn(a0, a1) : -ENOSYS;
+}
+
+static int compat_get_vi_attr(void *attr)
+{
+    return call1(FH8626_GET_VI, (uintptr_t)attr);
+}
+
+static int compat_set_flip_mirror(uint32_t value)
+{
+    mirror_flip = value;
+    return unresolved("SetSensorFlipMirror");
+}
+
+static int compat_get_flip_mirror(uint32_t *value)
+{
+    if (value)
+        *value = mirror_flip;
+    return value ? 0 : -EINVAL;
+}
+
+static int compat_set_iris(uint32_t value)
+{
+    (void)value;
+    return unresolved("SetSensorIris");
+}
+
+int Sensor_Init(void)
+{
+    return call0(FH8626_INIT);
+}
+
+static int compat_reset(void)
+{
+    /* GPIO5 reset/bootstrap is board-owned on AJL33PQ0866. */
+    return unresolved("SensorReset");
+}
+
+int Sensor_DeInit(void)
+{
+    /*
+     * Native FH8626 plug-in teardown has not been accepted as a reloadable
+     * lifetime. Process exit releases it; do not call the opaque destructor
+     * from the FH8852 lifecycle until the same-boot contract is proven.
+     */
+    return 0;
+}
+
+static int compat_set_fmt(uint32_t fmt)
+{
+    return call1(FH8626_SET_FMT, fmt);
+}
+
+static int compat_kick(void)
+{
+    int rc = call0(FH8626_KICK);
+    return rc == -ENOSYS ? 0 : rc;
+}
+
+int Sensor_Write(uint32_t reg, uint32_t value)
+{
+    return call2(FH8626_WRITE_REG, reg, value);
+}
+
+int Sensor_Read(uint32_t reg)
+{
+    typedef int (*fn_t)(uint32_t);
+    fn_t fn = NULL;
+
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = dlsym(native_handle, "Sensor_Read");
+    return fn ? fn(reg) : -ENOSYS;
+}
+
+static int compat_set_exposure_ratio(uint32_t value)
+{
+    (void)value;
+    return unresolved("SetExposureRatio");
+}
+
+static int compat_get_exposure_ratio(uint32_t *value)
+{
+    if (value)
+        *value = 1;
+    return value ? unresolved("GetExposureRatio") : -EINVAL;
+}
+
+static int compat_get_sensor_attribute(void *attr)
+{
+    (void)attr;
+    return unresolved("GetSensorAttribute");
+}
+
+static int compat_set_lane_num_max(uint32_t lanes)
+{
+    (void)lanes;
+    return unresolved("SetLaneNumMax");
+}
+
+static int compat_get_reg(uint32_t reg)
+{
+    return Sensor_Read(reg);
+}
+
+static int compat_get_awb_gain(uint32_t gain[3])
+{
+    typedef void (*fn_t)(uint32_t *);
+    fn_t fn = NULL;
+
+    if (!gain)
+        return -EINVAL;
+    if (!native_open()) {
+        *(void **)(&fn) = native_cb(FH8626_AWB_QUERY);
+        if (fn)
+            fn(gain);
+        else
+            memcpy(gain, awb_gain, sizeof(awb_gain));
+    }
+    return 0;
+}
+
+static int compat_set_awb_gain(uint32_t gain[3])
+{
+    typedef void (*fn_t)(uint32_t *);
+    fn_t fn = NULL;
+
+    if (!gain)
+        return -EINVAL;
+    memcpy(awb_gain, gain, sizeof(awb_gain));
+    if (!native_open()) {
+        *(void **)(&fn) = native_cb(FH8626_AWB_SET);
+        if (fn)
+            fn(gain);
+    }
+    return 0;
+}
+
+static int compat_common_if(uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3)
+{
+    typedef int (*fn_t)(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+    fn_t fn = NULL;
+
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = native_cb(FH8626_CONTROL);
+    return fn ? fn(a0, a1, a2, a3) : unresolved("SensorCommonIf");
+}
+
+static int compat_get_ae_default(void *value)
+{
+    (void)value;
+    return unresolved("GetAEDefault");
+}
+
+static int compat_get_ae_info(void *value)
+{
+    (void)value;
+    return unresolved("GetAEInfo");
+}
+
+static int compat_set_intt(uint32_t value)
+{
+    return call1(FH8626_SET_INTT, value);
+}
+
+static int compat_calc_valid_intt(uint32_t requested, uint32_t *valid)
+{
+    if (valid)
+        *valid = requested;
+    return valid ? unresolved("CalcSnsValidIntt") : -EINVAL;
+}
+
+static int compat_set_gain(uint32_t value)
+{
+    return call1(FH8626_SET_GAIN, value);
+}
+
+static int compat_calc_valid_gain(uint32_t requested, uint32_t *valid)
+{
+    if (valid)
+        *valid = requested;
+    return valid ? unresolved("CalcSnsValidGain") : -EINVAL;
+}
+
+static int compat_set_frame_h(uint32_t value)
+{
+    (void)value;
+    /*
+     * FH8626 +0x14 is a recovered VTS-multiplier operation, not proven to be
+     * wire-compatible with FH8852 SetSnsFrameH. Do not conflate them.
+     */
+    return unresolved("SetSnsFrameH");
+}
+
+static int compat_get_mirror_bayer(uint32_t *value)
+{
+    if (value)
+        *value = mirror_flip;
+    return value ? unresolved("GetMirrorFlipBayerFormat") : -EINVAL;
+}
+
+static int compat_get_user_awb_gain(uint32_t gain[3])
+{
+    return compat_get_awb_gain(gain);
+}
+
+static int compat_get_ltm_curve(void *curve)
+{
+    (void)curve;
+    return unresolved("GetSensorLtmCurve");
+}
+
+int Sensor_Isconnect(void)
+{
+    int hi;
+    int lo;
+
+    hi = Sensor_Read(0xf0);
+    lo = Sensor_Read(0xf1);
+    if (hi < 0 || lo < 0)
+        return 0;
+    return ((hi & 0xff) == 0x10 && (lo & 0xff) == 0x54) ? 1 : 0;
+}
+
+static struct fh8852_sensor_if compat_if = {
+    .name = "gc1054_mipi",
+    .get_vi_attr = compat_get_vi_attr,
+    .set_flip_mirror = compat_set_flip_mirror,
+    .get_flip_mirror = compat_get_flip_mirror,
+    .set_iris = compat_set_iris,
+    .init = Sensor_Init,
+    .reset = compat_reset,
+    .deinit = Sensor_DeInit,
+    .set_fmt = compat_set_fmt,
+    .kick = compat_kick,
+    .set_reg = Sensor_Write,
+    .set_exposure_ratio = compat_set_exposure_ratio,
+    .get_exposure_ratio = compat_get_exposure_ratio,
+    .get_sensor_attribute = compat_get_sensor_attribute,
+    .set_lane_num_max = compat_set_lane_num_max,
+    .get_reg = compat_get_reg,
+    .get_awb_gain = compat_get_awb_gain,
+    .set_awb_gain = compat_set_awb_gain,
+    .reserved_48 = NULL,
+    .common_if = compat_common_if,
+    .get_ae_default = compat_get_ae_default,
+    .get_ae_info = compat_get_ae_info,
+    .set_intt = compat_set_intt,
+    .calc_valid_intt = compat_calc_valid_intt,
+    .set_gain = compat_set_gain,
+    .calc_valid_gain = compat_calc_valid_gain,
+    .set_frame_h = compat_set_frame_h,
+    .get_mirror_bayer = compat_get_mirror_bayer,
+    .get_user_awb_gain = compat_get_user_awb_gain,
+    .get_ltm_curve = compat_get_ltm_curve,
+    .is_connect = Sensor_Isconnect,
+};
+
+void *Sensor_Create(void)
+{
+    if (native_open())
+        return NULL;
+    return &compat_if;
+}
+
+void Sensor_Destroy(void)
+{
+    native_if = NULL;
+    native_handle = NULL;
+}
