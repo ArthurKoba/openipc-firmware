@@ -1,8 +1,2 @@
 #!/bin/sh
-export SENSOR="${SENSOR:-majestic-fh8626/libgc1054_mipi}"
-export FH8626_NATIVE_SENSOR_SO="${FH8626_NATIVE_SENSOR_SO:-/usr/lib/fh8626/libgc1054_mipi.so}"
-export LD_LIBRARY_PATH=/usr/lib/majestic-fh8626:/usr/lib/fh8626:/usr/lib/majestic-fh8852v200:/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-export FH8626_MAJESTIC_TRACE="${FH8626_MAJESTIC_TRACE:-1}"
-export FH8626_MAJESTIC_STUB_OK=1
-export FH8626_MAJESTIC_NATIVE_VENC=1
-exec /usr/libexec/majestic-fh8852v200/majestic "$@"
+exec /usr/libexec/majestic-fh8852v200/majestic-fh8626-run native-video "$@"

@@ -57,6 +57,9 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/majestic
 	$(INSTALL) -m 755 $(@D)/fh8626-majestic-abi-probe \
 		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/fh8626-majestic-abi-probe
+	$(INSTALL) -m 755 \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-run \
+		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/majestic-fh8626-run
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/lib/majestic-fh8626
 	$(INSTALL) -m 755 $(@D)/libgc1054_mipi.so \
@@ -92,6 +95,10 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 644 \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-http-only.yaml \
 		$(TARGET_DIR)/etc/majestic.yaml
+	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/share/majestic-fh8626
+	$(INSTALL) -m 644 \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-video.yaml \
+		$(TARGET_DIR)/usr/share/majestic-fh8626/majestic-video.yaml
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/etc/init.d
 	$(INSTALL) -m 755 \

@@ -1,0 +1,60 @@
+#!/bin/sh
+set -eu
+
+MODE="${1:-strict}"
+shift || true
+
+CONFIG=/usr/share/majestic-fh8626/majestic-video.yaml
+TARGET=/etc/majestic.yaml
+MOUNTED=0
+
+cleanup()
+{
+	if [ "$MOUNTED" = 1 ]; then
+		umount "$TARGET" 2>/dev/null || true
+	fi
+}
+trap cleanup EXIT INT TERM HUP
+
+if pidof majestic >/dev/null 2>&1; then
+	echo "ERROR: another Majestic process is already running; stop S95majestic first" >&2
+	exit 16
+fi
+
+[ -r "$CONFIG" ] || {
+	echo "ERROR: missing $CONFIG" >&2
+	exit 2
+}
+[ -e "$TARGET" ] || {
+	echo "ERROR: missing $TARGET bind target" >&2
+	exit 2
+}
+
+mount --bind "$CONFIG" "$TARGET"
+MOUNTED=1
+
+export SENSOR="${SENSOR:-majestic-fh8626/libgc1054_mipi}"
+export FH8626_NATIVE_SENSOR_SO="${FH8626_NATIVE_SENSOR_SO:-/usr/lib/fh8626/libgc1054_mipi.so}"
+export LD_LIBRARY_PATH=/usr/lib/majestic-fh8626:/usr/lib/fh8626:/usr/lib/majestic-fh8852v200:/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export FH8626_MAJESTIC_TRACE="${FH8626_MAJESTIC_TRACE:-1}"
+
+case "$MODE" in
+	strict)
+		unset FH8626_MAJESTIC_STUB_OK
+		unset FH8626_MAJESTIC_NATIVE_VENC
+		;;
+	stub)
+		export FH8626_MAJESTIC_STUB_OK=1
+		unset FH8626_MAJESTIC_NATIVE_VENC
+		;;
+	native-video)
+		export FH8626_MAJESTIC_STUB_OK=1
+		export FH8626_MAJESTIC_NATIVE_VENC=1
+		;;
+	*)
+		echo "usage: $0 {strict|stub|native-video} [majestic args...]" >&2
+		exit 2
+		;;
+esac
+
+/usr/libexec/majestic-fh8852v200/majestic "$@"

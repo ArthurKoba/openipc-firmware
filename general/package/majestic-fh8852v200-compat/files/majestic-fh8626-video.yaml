@@ -1,0 +1,75 @@
+# FH8626V100 explicit Majestic media bring-up configuration.
+# Installed separately from /etc/majestic.yaml and bind-mounted only by the
+# manual compatibility runners. It never changes the default HTTP-only boot.
+system:
+  webPort: 80
+  httpsPort: 443
+  logLevel: debug
+
+isp:
+  antiFlicker: disabled
+
+image:
+  mirror: false
+  flip: false
+  rotate: 0
+  contrast: 50
+  hue: 50
+  saturation: 50
+  luminance: 50
+
+video0:
+  enabled: true
+  codec: h264
+  size: 1280x720
+  fps: 25
+  bitrate: 4096
+  rcMode: vbr
+  gopSize: 25
+
+video1:
+  enabled: false
+  codec: h264
+
+jpeg:
+  enabled: false
+  qfactor: 50
+  fps: 1
+
+osd:
+  enabled: false
+
+audio:
+  enabled: false
+  outputEnabled: false
+
+rtsp:
+  enabled: true
+  port: 554
+
+nightMode:
+  colorToGray: true
+  irCutSingleInvert: false
+  lightMonitor: false
+  lightSensorInvert: false
+
+motionDetect:
+  enabled: false
+
+records:
+  enabled: false
+
+outgoing:
+  enabled: false
+
+watchdog:
+  enabled: false
+
+hls:
+  enabled: false
+
+mdns:
+  enabled: false
+
+onvif:
+  enabled: false
