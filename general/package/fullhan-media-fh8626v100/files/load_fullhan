@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+case "${1:-}" in
+	-i|init|"")
+		exec /usr/sbin/fh-media-modules
+		;;
+	*)
+		echo "usage: $0 {-i|init}" >&2
+		exit 2
+		;;
+esac
