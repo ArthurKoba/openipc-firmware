@@ -543,14 +543,13 @@ static const void *compat_get_ltm_curve(uint32_t index)
 
 int Sensor_Isconnect(void)
 {
-    int hi;
-    int lo;
+    typedef int (*fn_t)(void);
+    fn_t fn = NULL;
 
-    hi = Sensor_Read(0xf0);
-    lo = Sensor_Read(0xf1);
-    if (hi < 0 || lo < 0)
+    if (native_open())
         return 0;
-    return ((hi & 0xff) == 0x10 && (lo & 0xff) == 0x54) ? 1 : 0;
+    *(void **)(&fn) = dlsym(native_handle, "Sensor_Isconnect");
+    return fn ? fn() : 0;
 }
 
 static struct fh8852_sensor_if compat_if = {

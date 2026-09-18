@@ -112,6 +112,30 @@ int Sensor_Read(uint32_t reg)
     return value;
 }
 
+int Sensor_Isconnect(void)
+{
+    int opened_here = 0;
+    int hi, lo;
+    int rc;
+
+    if (sensor_fd < 0) {
+        rc = sensor_device_init();
+        if (rc)
+            return 0;
+        opened_here = 1;
+    }
+
+    hi = Sensor_Read(0xf0u);
+    lo = Sensor_Read(0xf1u);
+
+    if (opened_here)
+        (void)sensor_device_close();
+
+    if (hi < 0 || lo < 0)
+        return 0;
+    return ((hi & 0xff) == 0x10 && (lo & 0xff) == 0x54) ? 1 : 0;
+}
+
 static int gc_init(void)
 {
     int words[6];
