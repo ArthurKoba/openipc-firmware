@@ -23,9 +23,10 @@
  *   AO frame                     0x01008002
  * and the same simple command IDs used by the recovered FH8626 path.
  *
- * This facade deliberately implements only the recovered public subset. AEC,
- * AGC and advanced NR entry points remain explicit -ENOSYS boundaries until
- * their exact command records are required by an observed Majestic call.
+ * The recovered public MPI surface is translated onto the same RTX command
+ * family: capture/playback, AEC, AGC, capture/playback NR, HPF, pause/resume,
+ * raw capture and variable extension commands. Unsupported behavior is kept
+ * explicit rather than reported as a successful no-op.
  */
 
 #define RTXBUS_RESET   0x40000000UL
@@ -665,6 +666,51 @@ int FH_AC_Raw_SetConfig(const void *config)
     return payload_command(AC_CMD_RAW_CONFIG, config, 16u);
 }
 
+int FH_AC_Ext2_Ioctl(const void *payload)
+{
+    const uint32_t *p = payload;
+    uint8_t *record;
+    uint32_t payload_len, logical, storage;
+    int32_t status = 0;
+    int rc;
+
+    if (!payload || ac_fd < 0)
+        return FH_AC_E_ARGUMENT;
+
+    /*
+     * Exact FH8852 donor wrapper:
+     *   p[1]             = variable extension payload length
+     *   record.size      = payload_len + 0x10
+     *   record.size_a/b  = low16(record.size)
+     *   record.opcode    = 0x01040022
+     *   record+0x10      = original {header(8),payload(payload_len)}
+     * Allocation is payload_len + 0x18 because the copied public record
+     * includes its own leading 8-byte header.
+     */
+    payload_len = p[1];
+    if (payload_len > 0xffefu)
+        return FH_AC_E_RANGE;
+    logical = payload_len + 0x10u;
+    storage = payload_len + 0x18u;
+
+    record = malloc(storage);
+    if (!record)
+        return FH_AC_E_NOMEM;
+    memset(record, 0, storage);
+
+    memcpy(record + 0, &logical, 4);
+    *(uint16_t *)(record + 4) = (uint16_t)logical;
+    *(uint16_t *)(record + 6) = (uint16_t)logical;
+    *(uint32_t *)(record + 8) = 0x01040022u;
+    memcpy(record + 16, payload, payload_len + 8u);
+
+    rc = command(record);
+    if (!rc)
+        memcpy(&status, record + 12, sizeof(status));
+    free(record);
+    return rc ? rc : status;
+}
+
 int FH_AC_Raw_GetFrameFast(struct fh_ac_raw_frame *frame)
 {
     struct ac_frame_command r = {
@@ -707,6 +753,4 @@ const char *FH_AC_Version(void)
 }
 
 
-/* Loader-complete optional FH8852 ACW surface. */
-#define AC_STUB0(name) int name(void) { return unsupported(#name); }
-AC_STUB0(FH_AC_Ext2_Ioctl)
+/* No known FH8852 ACW loader stubs remain in the recovered Majestic surface. */
