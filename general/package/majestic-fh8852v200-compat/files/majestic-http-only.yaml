@@ -1,7 +1,7 @@
 # FH8626V100 Majestic compatibility baseline.
-# The HTTP/WebUI control plane is usable, but the FH8852 media ABI is not yet
-# compatible with the FH8626 GC1054/ISP path. Keep every media consumer off
-# until the compatibility layer is implemented and hardware-tested.
+# Keep every media consumer off for the default control-plane baseline.
+# The FH8626 compatibility layer is implemented offline, but media remains
+# opt-in until the exact composed image passes build and target acceptance.
 system:
   webPort: 80
   httpsPort: 443
