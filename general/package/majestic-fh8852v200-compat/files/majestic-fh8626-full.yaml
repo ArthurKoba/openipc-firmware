@@ -40,10 +40,21 @@ jpeg:
   enabled: true
   size: 640x384
   qfactor: 50
-  fps: 1
+  fps: 5
 
 osd:
   enabled: true
+  template: '%d.%m.%Y %H:%M:%S'
+  font: /usr/share/fonts/truetype/UbuntuMono-Regular.ttf
+  size: "1.0"
+  weight: normal
+  outline: true
+  anchor: proportional
+  offsetX: "0"
+  offsetY: "0"
+  posX: 16
+  posY: 16
+  bgAlpha: 25
 
 audio:
   enabled: true
