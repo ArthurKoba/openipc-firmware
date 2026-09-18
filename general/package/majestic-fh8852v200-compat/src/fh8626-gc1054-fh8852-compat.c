@@ -46,37 +46,37 @@ enum {
 };
 
 struct fh8852_sensor_if {
-    const char *name;             /* +0x00 */
-    void *get_vi_attr;            /* +0x04 */
-    void *set_flip_mirror;        /* +0x08 */
-    void *get_flip_mirror;        /* +0x0c */
-    void *set_iris;               /* +0x10 */
-    void *init;                   /* +0x14 */
-    void *reset;                  /* +0x18 */
-    void *deinit;                 /* +0x1c */
-    void *set_fmt;                /* +0x20 */
-    void *kick;                   /* +0x24 */
-    void *set_reg;                /* +0x28 */
-    void *set_exposure_ratio;     /* +0x2c */
-    void *get_exposure_ratio;     /* +0x30 */
-    void *get_sensor_attribute;   /* +0x34 */
-    void *set_lane_num_max;       /* +0x38 */
-    void *get_reg;                /* +0x3c */
-    void *get_awb_gain;           /* +0x40 */
-    void *set_awb_gain;           /* +0x44 */
-    void *reserved_48;            /* +0x48 */
-    void *common_if;              /* +0x4c */
-    void *get_ae_default;         /* +0x50 */
-    void *get_ae_info;            /* +0x54 */
-    void *set_intt;               /* +0x58 */
-    void *calc_valid_intt;        /* +0x5c */
-    void *set_gain;               /* +0x60 */
-    void *calc_valid_gain;        /* +0x64 */
-    void *set_frame_h;            /* +0x68 */
-    void *get_mirror_bayer;       /* +0x6c */
-    void *get_user_awb_gain;      /* +0x70 */
-    void *get_ltm_curve;          /* +0x74 */
-    void *is_connect;             /* +0x78 */
+    const char *name;                                      /* +0x00 */
+    int (*get_vi_attr)(void *);                            /* +0x04 */
+    int (*set_flip_mirror)(uint32_t);                      /* +0x08 */
+    int (*get_flip_mirror)(uint32_t *);                    /* +0x0c */
+    void *set_iris;                                        /* +0x10 */
+    int (*init)(void);                                     /* +0x14 */
+    void *reset;                                           /* +0x18 */
+    int (*deinit)(void);                                   /* +0x1c */
+    int (*set_fmt)(uint32_t);                              /* +0x20 */
+    int (*kick)(void);                                     /* +0x24 */
+    int (*set_reg)(uint16_t, uint16_t);                    /* +0x28 */
+    int (*set_exposure_ratio)(uint32_t);                   /* +0x2c */
+    int (*get_exposure_ratio)(uint32_t *);                 /* +0x30 */
+    int (*get_sensor_attribute)(const char *, uint32_t *); /* +0x34 */
+    int (*set_lane_num_max)(uint32_t);                     /* +0x38 */
+    int (*get_reg)(uint16_t, uint16_t *);                  /* +0x3c */
+    int (*get_awb_gain)(uint32_t *);                       /* +0x40 */
+    int (*set_awb_gain)(uint32_t *);                       /* +0x44 */
+    void *reserved_48;                                     /* +0x48 */
+    int (*common_if)(uint32_t, void *, uint32_t);          /* +0x4c */
+    int (*get_ae_default)(uint32_t *);                     /* +0x50 */
+    int (*get_ae_info)(uint32_t *);                        /* +0x54 */
+    int (*set_intt)(uint32_t, uint32_t);                   /* +0x58 */
+    int (*calc_valid_intt)(uint32_t *);                    /* +0x5c */
+    int (*set_gain)(uint32_t, uint32_t);                   /* +0x60 */
+    int (*calc_valid_gain)(uint32_t *);                    /* +0x64 */
+    int (*set_frame_h)(uint32_t);                          /* +0x68 */
+    const uint32_t *(*get_mirror_bayer)(void);             /* +0x6c */
+    const uint32_t *(*get_user_awb_gain)(uint32_t);        /* +0x70 */
+    const void *(*get_ltm_curve)(uint32_t);                /* +0x74 */
+    int (*is_connect)(void);                               /* +0x78 */
 };
 
 _Static_assert(sizeof(void *) == 4, "FH8852 sensor ABI requires 32-bit ARM pointers");
@@ -254,8 +254,9 @@ static int compat_get_flip_mirror(uint32_t *value)
     return rc;
 }
 
-static int compat_set_iris(void)
+static int compat_set_iris(uint32_t value)
 {
+    (void)value;
     /* All three audited FH8852 donor sensors implement this as success/no-op. */
     return 0;
 }
@@ -265,13 +266,10 @@ int Sensor_Init(void)
     return call0(FH8626_INIT);
 }
 
-static int compat_reset(uint32_t value)
+static int compat_reset(void)
 {
-    /*
-     * Audited FH8852 donor sensors return the argument unchanged. Physical
-     * GPIO5 bootstrap/reset policy remains board-owned on AJL33PQ0866.
-     */
-    return (int)value;
+    /* The audited FH8852 reset callbacks are empty; GPIO5 remains board-owned. */
+    return 0;
 }
 
 int Sensor_DeInit(void)
@@ -347,9 +345,22 @@ static int compat_set_lane_num_max(uint32_t lanes)
     return 0;
 }
 
-static int compat_get_reg(uint32_t reg)
+static int compat_set_reg(uint16_t reg, uint16_t value)
 {
-    return Sensor_Read(reg);
+    return Sensor_Write(reg, value);
+}
+
+static int compat_get_reg(uint16_t reg, uint16_t *value)
+{
+    int rc;
+
+    if (!value)
+        return -EINVAL;
+    rc = Sensor_Read(reg);
+    if (rc < 0)
+        return rc;
+    *value = (uint16_t)rc;
+    return 0;
 }
 
 static int compat_get_awb_gain(uint32_t gain[3])
@@ -516,13 +527,16 @@ static const uint32_t *compat_get_mirror_bayer(void)
     return fn ? fn() : NULL;
 }
 
-static int compat_get_user_awb_gain(uint32_t gain[3])
+static const uint32_t *compat_get_user_awb_gain(uint32_t index)
 {
-    return compat_get_awb_gain(gain);
+    (void)index;
+    /* Stock FH8626 GC1054 exposes no user-AWB preset table. */
+    return NULL;
 }
 
-static void *compat_get_ltm_curve(void)
+static const void *compat_get_ltm_curve(uint32_t index)
 {
+    (void)index;
     /* Stock FH8626 GC1054 returns NULL for this optional callback. */
     return NULL;
 }
@@ -550,7 +564,7 @@ static struct fh8852_sensor_if compat_if = {
     .deinit = Sensor_DeInit,
     .set_fmt = compat_set_fmt,
     .kick = compat_kick,
-    .set_reg = Sensor_Write,
+    .set_reg = compat_set_reg,
     .set_exposure_ratio = compat_set_exposure_ratio,
     .get_exposure_ratio = compat_get_exposure_ratio,
     .get_sensor_attribute = compat_get_sensor_attribute,
