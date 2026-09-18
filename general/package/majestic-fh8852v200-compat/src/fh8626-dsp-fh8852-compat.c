@@ -440,26 +440,34 @@ int FH_VPSS_CloseChn(uint32_t chn)
 
 int FH_VPSS_Enable(uint32_t chn)
 {
-    uint32_t enable = 1;
     int rc;
 
-    if (chn != 0)
-        return -ENOTSUP;
+    /*
+     * Apollo FH_VPSS_Enable(channel) passes the channel word directly to
+     * 0xC004694D. The payload is not a boolean enable flag.
+     */
+    if (chn > 4u)
+        return -EINVAL;
     if ((rc = open_native()))
         return rc;
-    return call_ioctl(isp_fd, FH8626_VPU_ENABLE, &enable);
+    return call_ioctl(isp_fd, FH8626_VPU_ENABLE, &chn);
 }
 
 int FH_VPSS_Disable(uint32_t chn)
 {
-    uint32_t enable = 0;
     int rc;
 
-    if (chn != 0)
-        return -ENOTSUP;
+    /*
+     * Disable is a distinct FH8626 driver operation in the vendor API; the
+     * recovered public wrapper still passes the channel id, not 0/1 state.
+     * Until the exact disable request is wired below, do not alias it to
+     * ENABLE with a zero payload.
+     */
+    if (chn > 4u)
+        return -EINVAL;
     if ((rc = open_native()))
         return rc;
-    return call_ioctl(isp_fd, FH8626_VPU_ENABLE, &enable);
+    return strict_stub("FH_VPSS_Disable");
 }
 
 int FH_VPSS_SetFramectrl(uint32_t chn, const uint16_t pair[2])
