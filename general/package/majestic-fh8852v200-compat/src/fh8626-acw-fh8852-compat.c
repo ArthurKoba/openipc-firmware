@@ -377,14 +377,17 @@ static int ac_init_common(uint32_t external_codec)
     ac_ao_offset = ac_map_offset + (ac_map_length - ac_tail_length);
 
     /*
-     * Stock Apollo public FH_AC_Init owns the retail DSP initialization
-     * payload. Reuse the exact AJL33PQ0866 blob already recovered and used by
-     * the Divinus native RTX backend instead of depending on Majestic to make
-     * a second, undocumented FH_AC_Set_InitParam call.
+     * Stock Apollo public FH_AC_Init owns the retail on-chip DSP
+     * initialization payload. Reuse the exact AJL33PQ0866 blob already
+     * recovered by the Divinus native RTX backend. The explicit
+     * Init_WithExternalCodec entry keeps its external-codec semantics and
+     * therefore does not force the board's internal-codec tuning blob.
      */
-    rc = apply_retail_init_params();
-    if (rc)
-        goto fail;
+    if (!external_codec) {
+        rc = apply_retail_init_params();
+        if (rc)
+            goto fail;
+    }
 
     if (trace_enabled())
         fprintf(stderr,
