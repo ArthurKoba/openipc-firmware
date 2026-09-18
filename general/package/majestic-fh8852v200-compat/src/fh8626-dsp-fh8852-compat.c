@@ -25,6 +25,7 @@
 
 #define FH8626_VMM_ALLOC          0xC0686D0AUL
 #define FH8626_MEDIA_BIND         0xC0084D00UL
+#define FH8626_MEDIA_UNBIND_DST   0xC0044D01UL
 #define FH8626_MEDIA_UNBIND_SRC   0xC0044D02UL
 #define FH8626_MEDIA_STREAM       0xC1704D06UL
 #define FH8626_MEDIA_STREAM_KIND  4u
@@ -118,15 +119,20 @@ static int media_fd = -1;
 static int pae_fd = -1;
 static int vmm_fd = -1;
 static struct mem3 vpu_sys;
-static struct mem3 vpu_chn[2];
+#define FH8626_VPU_CHANNELS 5u
+#define FH8626_VENC_CHANNELS 8u
+#define FH8626_PRODUCT_VENC_CHANNELS 3u
+
+static struct mem3 vpu_chn[FH8626_VPU_CHANNELS];
 static struct mem3 pae_sys;
-static struct mem3 pae_chn;
-static uint32_t venc_support_type;
-static uint32_t venc_capacity_width;
-static uint32_t venc_capacity_height;
-static int pae_configured;
-static int media_bound;
+static struct mem3 pae_chn[FH8626_VENC_CHANNELS];
+static uint32_t venc_support_type[FH8626_VENC_CHANNELS];
+static uint32_t venc_capacity_width[FH8626_VENC_CHANNELS];
+static uint32_t venc_capacity_height[FH8626_VENC_CHANNELS];
+static int pae_configured[FH8626_VENC_CHANNELS];
+static uint32_t media_bound_mask;
 static int stream_lease_held;
+static uint32_t stream_lease_channel;
 static uint32_t stream_desc[FH8626_MEDIA_DESC_WORDS];
 
 static int env_true(const char *name)
@@ -286,30 +292,47 @@ int FH_SYS_Exit(void)
 
 int FH_SYS_BindVpu2Enc(uint32_t vpu_chn, uint32_t venc_chn)
 {
-    uint32_t bind[2] = {1u, 7u};
+    uint32_t bind[2];
     int rc;
 
-    if (vpu_chn != 0u || venc_chn != 0u)
-        return -ENOTSUP;
+    if (vpu_chn >= FH8626_VPU_CHANNELS || venc_chn >= FH8626_VENC_CHANNELS)
+        return -EINVAL;
+
+    /*
+     * Recovered FH8852/FH8626 public bind contract:
+     * source media object = VPU channel + 1
+     * destination bind id = VENC channel + 7
+     */
+    bind[0] = vpu_chn + 1u;
+    bind[1] = venc_chn + 7u;
     if ((rc = open_native()))
         return rc;
     rc = call_ioctl(media_fd, FH8626_MEDIA_BIND, bind);
     if (!rc)
-        media_bound = 1;
+        media_bound_mask |= 1u << vpu_chn;
     return rc;
 }
 
 int FH_SYS_UnBindbySrc(uint32_t source)
 {
-    if (!media_bound)
-        return 0;
-    if (open_native())
-        return -EIO;
-    media_bound = 0;
-    return call_ioctl(media_fd, FH8626_MEDIA_UNBIND_SRC, &source);
+    int rc;
+
+    if ((rc = open_native()))
+        return rc;
+    rc = call_ioctl(media_fd, FH8626_MEDIA_UNBIND_SRC, &source);
+    if (!rc && source > 0u && source <= FH8626_VPU_CHANNELS)
+        media_bound_mask &= ~(1u << (source - 1u));
+    return rc;
 }
 
-int FH_SYS_UnBindbyDst(uint32_t source) { return FH_SYS_UnBindbySrc(source); }
+int FH_SYS_UnBindbyDst(uint32_t destination)
+{
+    int rc;
+
+    if ((rc = open_native()))
+        return rc;
+    return call_ioctl(media_fd, FH8626_MEDIA_UNBIND_DST, &destination);
+}
 int FH_SYS_BindVpu2Bgm(void) { return strict_stub("FH_SYS_BindVpu2Bgm"); }
 int FH_SYS_BindVpu2Nn(void) { return strict_stub("FH_SYS_BindVpu2Nn"); }
 int FH_SYS_Set_Resource(void *p) { (void)p; return strict_stub("FH_SYS_Set_Resource"); }
@@ -370,7 +393,7 @@ int FH_VPSS_QueryChnMem(uint32_t chn, uint32_t width, uint32_t height,
     struct vpu_query q = {chn, width, height, 0};
     int rc;
 
-    if (!size || chn >= 2)
+    if (!size || chn >= FH8626_VPU_CHANNELS)
         return -EINVAL;
     if ((rc = open_native()))
         return rc;
@@ -389,14 +412,14 @@ int FH_VPSS_ChnInitMem(uint32_t chn, uint32_t width, uint32_t height,
     int rc;
     (void)mode;
 
-    if (chn >= 2)
+    if (chn >= FH8626_VPU_CHANNELS)
         return -ENOTSUP;
     if (vpu_chn[chn].phys)
         return 0;
     rc = FH_VPSS_QueryChnMem(chn, width, height, &need);
     if (rc)
         return rc;
-    rc = alloc_vmm(chn ? "majestic-vpu1" : "majestic-vpu0",
+    rc = alloc_vmm(chn ? "majestic-vpuN" : "majestic-vpu0",
                    need, &vpu_chn[chn]);
     if (rc)
         return rc;
@@ -411,7 +434,7 @@ int FH_VPSS_SetChnAttr(uint32_t chn, const void *attr)
     struct channel_cfg cfg;
 
     trace_words("FH_VPSS_SetChnAttr", chn, attr, 12);
-    if (!attr || chn >= 2)
+    if (!attr || chn >= FH8626_VPU_CHANNELS)
         return -EINVAL;
 
     /*
@@ -562,37 +585,60 @@ int FH_VENC_QueryChnMem(uint32_t chn, uint32_t width, uint32_t height,
 int FH_VENC_CreateChn(uint32_t chn, const void *attr)
 {
     const uint32_t *a = attr;
+    struct pae_mem_query q;
+    uint32_t need = 0, candidate = 0;
+    char name[24];
     int rc;
 
-    if (chn != 0)
+    if (chn >= FH8626_PRODUCT_VENC_CHANNELS)
         return -ENOTSUP;
     if (!attr)
         return -EINVAL;
 
-    /*
-     * Apollo FH_VENC_CreateChn public record is exactly:
-     *   [0] support_type bitmask
-     *   [1] channel capacity width
-     *   [2] channel capacity height
-     * Normal H.264 is support bit 0x4; smart H.264 is bit 0x8.
-     */
     trace_words("FH_VENC_CreateChn", chn, attr, 3);
     if (!(a[0] & (4u | 8u)) || a[1] < 32u || a[2] < 32u)
         return -EINVAL;
 
-    venc_support_type = a[0];
-    venc_capacity_width = a[1];
-    venc_capacity_height = a[2];
+    venc_support_type[chn] = a[0];
+    venc_capacity_width[chn] = a[1];
+    venc_capacity_height[chn] = a[2];
 
     if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
         return strict_stub("FH_VENC_CreateChn");
 
-    if (venc_capacity_width < FH8626_WIDTH ||
-        venc_capacity_height < FH8626_HEIGHT)
-        return -ENOTSUP;
+    if ((rc = FH_VENC_SysInitMem()))
+        return rc;
+    if ((rc = open_native()))
+        return rc;
 
-    rc = FH_VENC_SysInitMem();
-    return rc;
+    if (a[0] & 4u) {
+        q = (struct pae_mem_query){chn, 0, a[1], a[2], 0};
+        rc = call_ioctl(pae_fd, FH8626_PAE_ENC_MEM_SIZE, &q);
+        if (rc)
+            return rc;
+        need = q.size;
+    }
+    if (a[0] & 8u) {
+        q = (struct pae_mem_query){chn, 0, a[1], a[2], 1};
+        rc = call_ioctl(pae_fd, FH8626_PAE_ENC_MEM_SIZE, &q);
+        if (rc)
+            return rc;
+        candidate = q.size;
+        if (candidate > need)
+            need = candidate;
+    }
+    if (!need)
+        return -EINVAL;
+
+    if (!pae_chn[chn].phys) {
+        snprintf(name, sizeof(name), "majestic-pae%u", chn);
+        rc = alloc_vmm(name, need, &pae_chn[chn]);
+        if (rc)
+            return rc;
+    } else if (pae_chn[chn].size < need) {
+        return -ENOSPC;
+    }
+    return 0;
 }
 
 static int h264_translate_attr(uint32_t chn, const uint32_t *a,
@@ -606,8 +652,10 @@ static int h264_translate_attr(uint32_t chn, const uint32_t *a,
         return -ENOTSUP;
     if (a[1] != 0x42u && a[1] != 0x4du)
         return -EINVAL;
-    if (a[3] < 32u || a[3] > venc_capacity_width ||
-        a[4] < 32u || a[4] > venc_capacity_height)
+    if (chn >= FH8626_PRODUCT_VENC_CHANNELS)
+        return -ENOTSUP;
+    if (a[3] < 32u || a[3] > venc_capacity_width[chn] ||
+        a[4] < 32u || a[4] > venc_capacity_height[chn])
         return -ERANGE;
 
     memset(cfg, 0, sizeof(*cfg));
@@ -736,13 +784,13 @@ static int h264_translate_attr(uint32_t chn, const uint32_t *a,
 
 static int native_venc_from_public_attr(uint32_t chn, const uint32_t *attr)
 {
-    struct pae_mem_query q;
     struct pae_mem mem;
     struct pae_cfg cfg;
     struct pae_rc rate;
+    uint32_t refmode;
     int rc;
 
-    if (chn != 0)
+    if (chn >= FH8626_PRODUCT_VENC_CHANNELS)
         return -ENOTSUP;
     if ((rc = h264_translate_attr(chn, attr, &cfg, &rate)))
         return rc;
@@ -750,27 +798,30 @@ static int native_venc_from_public_attr(uint32_t chn, const uint32_t *attr)
         return rc;
     if ((rc = FH_VENC_SysInitMem()))
         return rc;
+    if (!pae_chn[chn].phys)
+        return -EPIPE;
 
-    q = (struct pae_mem_query){chn, 0, cfg.width, cfg.height, 0};
-    if (!pae_chn.phys) {
-        rc = call_ioctl(pae_fd, FH8626_PAE_ENC_MEM_SIZE, &q);
-        if (rc)
-            return rc;
-        rc = alloc_vmm("majestic-pae0", q.size, &pae_chn);
-        if (rc)
-            return rc;
-        mem = (struct pae_mem){chn, pae_chn.phys, pae_chn.virt, pae_chn.size,
-                               cfg.width, cfg.height, 0};
-        rc = call_ioctl(pae_fd, FH8626_PAE_ENC_MEM_INIT, &mem);
-        if (rc)
-            return rc;
-    }
+    refmode = attr[0] == 8u ? 1u : 0u;
+    if (!(venc_support_type[chn] & attr[0]))
+        return -ENOTSUP;
+
+    /*
+     * Stock CreateChn allocates for channel capacity; SetChnAttr selects
+     * normal/smart H.264 and initializes that allocation with the capacity
+     * geometry before programming visible encoder geometry.
+     */
+    mem = (struct pae_mem){chn, pae_chn[chn].phys, pae_chn[chn].virt,
+                           pae_chn[chn].size, venc_capacity_width[chn],
+                           venc_capacity_height[chn], refmode};
+    rc = call_ioctl(pae_fd, FH8626_PAE_ENC_MEM_INIT, &mem);
+    if (rc)
+        return rc;
 
     rc = call_ioctl(pae_fd, FH8626_PAE_SET_CONFIG, &cfg);
     if (!rc)
         rc = call_ioctl(pae_fd, FH8626_PAE_SET_RC, &rate);
     if (!rc)
-        pae_configured = 1;
+        pae_configured[chn] = 1;
     return rc;
 }
 
@@ -787,51 +838,49 @@ int FH_VENC_SetChnAttr(uint32_t chn, const void *attr)
 int FH_VENC_StartRecvPic(uint32_t chn)
 {
     int rc;
+
+    if (chn >= FH8626_PRODUCT_VENC_CHANNELS)
+        return -ENOTSUP;
     if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
         return strict_stub("FH_VENC_StartRecvPic");
-    if (!pae_configured)
+    if (!pae_configured[chn])
         return -EPIPE;
-    if ((rc = open_native()))
-        return rc;
-    rc = call_ioctl(pae_fd, FH8626_PAE_START_RECV, &chn);
-    if (rc)
-        return rc;
-    rc = producer_gate(1);
-    if (rc)
-        (void)call_ioctl(pae_fd, FH8626_PAE_STOP_RECV, &chn);
-    return rc;
-}
-
-int FH_VENC_StopRecvPic(uint32_t chn)
-{
-    uint32_t channel = 0;
-    int rc, gate_rc, release_rc = 0;
-
-    if (chn != 0)
-        return -ENOTSUP;
     if ((rc = open_native()))
         return rc;
 
     /*
-     * Native FH8626 teardown requires every encoded-stream lease to be
-     * released before STOP_RECV. Preserve that invariant even when Majestic
-     * stops a channel while its consumer still owns the last stream record.
+     * Stock Apollo owns VI/VPU enable and ISP producer gating outside the
+     * per-channel VENC start. Do not toggle the global producer gate here:
+     * doing so makes stopping a substream capable of killing the main stream.
      */
-    if (stream_lease_held) {
-        release_rc = call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &channel);
+    return call_ioctl(pae_fd, FH8626_PAE_START_RECV, &chn);
+}
+
+int FH_VENC_StopRecvPic(uint32_t chn)
+{
+    int rc, release_rc = 0;
+
+    if (chn >= FH8626_PRODUCT_VENC_CHANNELS)
+        return -ENOTSUP;
+    if ((rc = open_native()))
+        return rc;
+
+    if (stream_lease_held && stream_lease_channel == chn) {
+        release_rc = call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &chn);
         if (!release_rc)
             stream_lease_held = 0;
     }
-    gate_rc = producer_gate(0);
     rc = call_ioctl(pae_fd, FH8626_PAE_STOP_RECV, &chn);
-    if (release_rc)
-        return release_rc;
-    return rc ? rc : gate_rc;
+    if (!rc)
+        pae_configured[chn] = 0;
+    return release_rc ? release_rc : rc;
 }
 
 int FH_VENC_RequestIDR(uint32_t chn)
 {
     int rc;
+    if (chn >= FH8626_PRODUCT_VENC_CHANNELS)
+        return -ENOTSUP;
     if ((rc = open_native()))
         return rc;
     return call_ioctl(pae_fd, FH8626_PAE_FORCE_I, &chn);
@@ -845,6 +894,8 @@ static int fill_public_stream(void *stream)
     if (!stream || !pae_sys.virt || !pae_sys.size)
         return -EINVAL;
     if (stream_desc[1] != FH8626_MEDIA_STREAM_KIND)
+        return -EAGAIN;
+    if (stream_desc[3] != stream_lease_channel)
         return -EAGAIN;
 
     virt = stream_desc[7];
@@ -895,7 +946,7 @@ static int acquire_stream(uint32_t chn, void *stream)
 {
     int rc;
 
-    if (chn != 0 || !stream)
+    if (chn >= FH8626_PRODUCT_VENC_CHANNELS || !stream)
         return -EINVAL;
     if (stream_lease_held)
         return -EBUSY;
@@ -907,10 +958,23 @@ static int acquire_stream(uint32_t chn, void *stream)
     rc = call_ioctl(media_fd, FH8626_MEDIA_STREAM, stream_desc);
     if (rc)
         return rc;
+
+    /*
+     * media_process.ko wraps the encoder's 0x168 record:
+     * desc[1] = inner kind (4 for H.264)
+     * desc[2] = inner kind again (start of copied inner record)
+     * desc[3] = encoder channel
+     * Query is a FIFO peek; release performs the pop. If the head belongs to
+     * another channel, leave it owned by that channel's consumer.
+     */
+    if (stream_desc[1] != FH8626_MEDIA_STREAM_KIND ||
+        stream_desc[3] != chn)
+        return -EAGAIN;
+
+    stream_lease_channel = chn;
     rc = fill_public_stream(stream);
     if (rc) {
-        uint32_t channel = 0;
-        (void)call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &channel);
+        (void)call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &chn);
         return rc;
     }
     stream_lease_held = 1;
@@ -949,17 +1013,16 @@ int FH_VENC_GetStream_Block(uint32_t chn, void *stream)
 
 int FH_VENC_ReleaseStream(uint32_t chn, void *stream)
 {
-    uint32_t channel = 0;
     int rc;
 
     (void)stream;
-    if (chn != 0)
+    if (chn >= FH8626_PRODUCT_VENC_CHANNELS)
         return -EINVAL;
-    if (!stream_lease_held)
+    if (!stream_lease_held || stream_lease_channel != chn)
         return -EPERM;
     if ((rc = open_native()))
         return rc;
-    rc = call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &channel);
+    rc = call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &chn);
     if (!rc)
         stream_lease_held = 0;
     return rc;
@@ -1153,7 +1216,7 @@ int FH_VENC_SetRCAttr(uint32_t chn, const void *attr)
     struct pae_rc rate;
     int rc;
 
-    if (!attr || chn != 0)
+    if (!attr || chn >= FH8626_PRODUCT_VENC_CHANNELS)
         return -EINVAL;
     trace_words("FH_VENC_SetRCAttr", chn, attr, 16);
     if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
@@ -1173,7 +1236,7 @@ int FH_VENC_GetChnAttr(uint32_t chn, void *attr)
     uint32_t *a = attr;
     int rc;
 
-    if (!attr || chn != 0)
+    if (!attr || chn >= FH8626_PRODUCT_VENC_CHANNELS)
         return -EINVAL;
     if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
         return strict_stub("FH_VENC_GetChnAttr");
@@ -1234,7 +1297,7 @@ int FH_VENC_SetRcChangeParam(uint32_t chn, const void *attr)
     uint32_t wire[7];
     int rc;
 
-    if (!attr || chn != 0)
+    if (!attr || chn >= FH8626_PRODUCT_VENC_CHANNELS)
         return -EINVAL;
     trace_words("FH_VENC_SetRcChangeParam", chn, attr, 6);
     if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
@@ -1256,7 +1319,7 @@ int FH_VENC_GetRCAttr(uint32_t chn, void *attr)
     struct pae_rc rate;
     int rc;
 
-    if (!attr || chn != 0)
+    if (!attr || chn >= FH8626_PRODUCT_VENC_CHANNELS)
         return -EINVAL;
     if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
         return strict_stub("FH_VENC_GetRCAttr");
