@@ -50,9 +50,9 @@ struct fh8852_sensor_if {
     int (*get_vi_attr)(void *);                            /* +0x04 */
     int (*set_flip_mirror)(uint32_t);                      /* +0x08 */
     int (*get_flip_mirror)(uint32_t *);                    /* +0x0c */
-    void *set_iris;                                        /* +0x10 */
+    int (*set_iris)(uint32_t);                          /* +0x10 */
     int (*init)(void);                                     /* +0x14 */
-    void *reset;                                           /* +0x18 */
+    int (*reset)(void);                                 /* +0x18 */
     int (*deinit)(void);                                   /* +0x1c */
     int (*set_fmt)(uint32_t);                              /* +0x20 */
     int (*kick)(void);                                     /* +0x24 */
