@@ -22,6 +22,8 @@ static const struct library donor_libraries[] = {
     { "/usr/lib/majestic-fh8852v200/libisp.so" },
     { "/usr/lib/majestic-fh8852v200/libadvapi.so" },
     { "/usr/lib/majestic-fh8852v200/libadvapi_isp.so" },
+    { "/usr/lib/majestic-fh8852v200/libadvapi_md.so" },
+    { "/usr/lib/majestic-fh8852v200/libadvapi_osd.so" },
     { "/usr/lib/majestic-fh8852v200/libadvapi_smartir.so" },
 };
 
@@ -57,6 +59,17 @@ static const struct symbol symbols[] = {
     { "FH_VPSS_Disable", "vi/vpss", 1 },
     { "FH_VPSS_SetFramectrl", "vi/vpss", 0 },
 
+    { "FH_VPSS_GetViAttr", "vi/vpss", 1 },
+    { "FH_VPSS_GetChnAttr", "vi/vpss", 1 },
+    { "FH_VPSS_EnableYCmean", "motion/osd", 1 },
+    { "FH_VPSS_DisableYCmean", "motion/osd", 1 },
+    { "FH_VPSS_GetYCmean", "motion/osd", 1 },
+    { "FH_VPSS_GetCPYData", "motion", 1 },
+    { "FH_VPSS_SetChnGraphV2", "osd", 1 },
+    { "FH_VPSS_GetChnGraphV2", "osd", 1 },
+    { "FH_VPSS_SetGlbGraphV2", "osd", 1 },
+    { "FH_VPSS_GetGlbGraphV2", "osd", 1 },
+
     { "FH_VENC_SysInitMem", "venc", 1 },
     { "FH_VENC_CreateChn", "venc", 1 },
     { "FH_VENC_SetChnAttr", "venc", 1 },
@@ -68,6 +81,36 @@ static const struct symbol symbols[] = {
     { "FH_VENC_RequestIDR", "venc", 1 },
     { "FH_VENC_SetRCAttr", "venc", 0 },
     { "FH_VENC_SetRcChangeParam", "venc", 0 },
+
+    { "FH_VENC_GetRCAttr", "venc", 1 },
+    { "FH_VENC_GetChnAttr", "venc", 1 },
+
+    { "_JPEG_SysInit", "jpeg", 1 },
+    { "_JPEG_QueryChnMem", "jpeg", 1 },
+    { "_JPEG_CreateChn", "jpeg", 1 },
+    { "_JPEG_DestroyChn", "jpeg", 1 },
+    { "_JPEG_SetChnAttr", "jpeg", 1 },
+    { "_JPEG_GetChnAttr", "jpeg", 1 },
+    { "_JPEG_SetRCAttr", "jpeg", 1 },
+    { "_JPEG_GetRCAttr", "jpeg", 1 },
+    { "_JPEG_Start", "jpeg", 1 },
+    { "_JPEG_Stop", "jpeg", 1 },
+    { "_JPEG_HandleStream", "jpeg", 1 },
+    { "_JPEG_ReleaseStream", "jpeg", 1 },
+
+    { "FH_AC_Init", "audio", 1 },
+    { "FH_AC_DeInit", "audio", 1 },
+    { "FH_AC_Set_Config", "audio", 1 },
+    { "FH_AC_AI_Enable", "audio", 1 },
+    { "FH_AC_AI_Disable", "audio", 1 },
+    { "FH_AC_AI_GetFrameWithPtsFast", "audio", 1 },
+    { "FH_AC_AO_Enable", "audio", 1 },
+    { "FH_AC_AO_Disable", "audio", 1 },
+    { "FH_AC_AO_SendFrame", "audio", 1 },
+    { "FH_AC_AEC_SetConfig", "audio-vqe", 1 },
+    { "FH_AC_NR_SetConfig", "audio-vqe", 1 },
+    { "FH_AC_Agc_SetConfig", "audio-vqe", 1 },
+    { "FH_AC_Ext2_Ioctl", "audio-vqe", 1 },
 
     { "mipi_init", "sensor/mipi", 1 },
     { "API_ISP_SensorRegCb", "sensor/isp", 1 },
@@ -115,6 +158,8 @@ static const struct library compatibility_libraries[] = {
     { "/usr/lib/majestic-fh8852v200/libisp.so" },
     { "/usr/lib/majestic-fh8852v200/libadvapi.so" },
     { "/usr/lib/majestic-fh8852v200/libadvapi_isp.so" },
+    { "/usr/lib/majestic-fh8852v200/libadvapi_md.so" },
+    { "/usr/lib/majestic-fh8852v200/libadvapi_osd.so" },
     { "/usr/lib/majestic-fh8852v200/libadvapi_smartir.so" },
 };
 
