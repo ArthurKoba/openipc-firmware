@@ -41,6 +41,8 @@ static uint32_t orientation_mode;
 
 extern void mipi_init(int *words);
 
+static int sensor_device_close(void);
+
 static int sensor_device_init(void)
 {
     int rc;
