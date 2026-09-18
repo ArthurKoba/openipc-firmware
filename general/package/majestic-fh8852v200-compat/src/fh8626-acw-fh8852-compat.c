@@ -111,11 +111,11 @@ struct fh_ac_frame {
     void *data;
 };
 
-_Static_assert(sizeof(struct ac_init_command) == 0x24, "AC init wire size");
-_Static_assert(sizeof(struct ac_simple_command) == 0x14, "AC simple wire size");
-_Static_assert(sizeof(struct ac_config_command) == 0x30, "AC config wire size");
-_Static_assert(sizeof(struct ac_frame_command) == 0x24, "AC frame storage size");
-_Static_assert(sizeof(struct ac_init_params_command) == 0x192, "AC init-param storage size");
+_Static_assert(sizeof(struct ac_init_command) == 0x20, "AC init storage size");
+_Static_assert(sizeof(struct ac_simple_command) == 0x14, "AC simple storage size");
+_Static_assert(sizeof(struct ac_config_command) == 0x30, "AC config storage size");
+_Static_assert(sizeof(struct ac_frame_command) == 0x20, "AC frame storage size");
+_Static_assert(sizeof(struct ac_init_params_command) == 0x194, "AC init-param storage size");
 
 static int ac_fd = -1;
 static uint8_t *ac_map = MAP_FAILED;
