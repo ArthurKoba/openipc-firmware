@@ -35,10 +35,19 @@ MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBS = \
 	libmipi.so \
 	libvmm.so
 
+define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
+	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) \
+		-o $(@D)/fh8626-majestic-abi-probe \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-majestic-abi-probe.c \
+		-ldl
+endef
+
 define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/libexec/majestic-fh8852v200
 	$(INSTALL) -m 755 $(@D)/majestic \
 		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/majestic
+	$(INSTALL) -m 755 $(@D)/fh8626-majestic-abi-probe \
+		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/fh8626-majestic-abi-probe
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/lib/majestic-fh8852v200
 	for lib in $(MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBS); do \
@@ -51,6 +60,9 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 755 \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8852v200-run \
 		$(TARGET_DIR)/usr/bin/majestic
+	$(INSTALL) -m 755 \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-abi-probe \
+		$(TARGET_DIR)/usr/bin/majestic-fh8626-abi-probe
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/etc
 	$(INSTALL) -m 644 \
