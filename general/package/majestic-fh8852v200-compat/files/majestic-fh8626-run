@@ -38,6 +38,12 @@ export FH8626_NATIVE_SENSOR_SO="${FH8626_NATIVE_SENSOR_SO:-/usr/lib/majestic-fh8
 export LD_LIBRARY_PATH=/usr/lib/majestic-fh8626:/usr/lib/fh8626:/usr/lib/majestic-fh8852v200:/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 export FH8626_MAJESTIC_TRACE="${FH8626_MAJESTIC_TRACE:-1}"
 
+# Optional board lifecycle hook. The RTX compatibility layer remains
+# board-neutral; the named ANJIA target owns GPIO24 speaker-amplifier policy.
+if [ -x /usr/sbin/fh-anjia-ajl33pq0866-audio ]; then
+	export FH8626_MAJESTIC_AO_HOOK=/usr/sbin/fh-anjia-ajl33pq0866-audio
+fi
+
 case "$MODE" in
 	strict)
 		unset FH8626_MAJESTIC_STUB_OK

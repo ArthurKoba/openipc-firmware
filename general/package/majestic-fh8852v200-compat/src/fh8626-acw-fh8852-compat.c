@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 /*
@@ -256,6 +257,34 @@ static int payload_command(uint32_t id, const void *payload, uint32_t len)
     return rc ? rc : status;
 }
 
+static int run_board_audio_hook(const char *action)
+{
+    const char *hook = getenv("FH8626_MAJESTIC_AO_HOOK");
+    pid_t pid;
+    int status;
+
+    if (!hook || !hook[0])
+        return 0;
+    if (!action || !action[0])
+        return FH_AC_E_ARGUMENT;
+
+    pid = fork();
+    if (pid < 0)
+        return errno ? -errno : -EIO;
+    if (pid == 0) {
+        execl(hook, hook, action, (char *)NULL);
+        _exit(127);
+    }
+
+    do {
+        if (waitpid(pid, &status, 0) >= 0)
+            break;
+    } while (errno == EINTR);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        return -EIO;
+    return 0;
+}
+
 static int query_value_command(uint32_t id, uint32_t *value)
 {
     struct ac_simple_command r = {
@@ -409,6 +438,9 @@ int FH_AC_DeInit(void)
             ac_ai_enabled = 0;
     }
     if (ac_fd >= 0 && ac_ao_enabled) {
+        rc = run_board_audio_hook("mute");
+        if (rc && !first_error)
+            first_error = rc;
         rc = simple(AC_CMD_AO_DISABLE, 0);
         if (rc && !first_error)
             first_error = rc;
@@ -583,21 +615,39 @@ int FH_AC_AI_Disable(void)
 
 int FH_AC_AO_Enable(void)
 {
-    int rc = simple(AC_CMD_AO_ENABLE, 0);
-    if (!rc)
-        ac_ao_enabled = 1;
-    return rc;
+    int rc;
+
+    rc = simple(AC_CMD_AO_ENABLE, 0);
+    if (rc)
+        return rc;
+    ac_ao_enabled = 1;
+
+    /*
+     * Physical amplifier policy is board-owned. The compatibility library
+     * only invokes an optional lifecycle hook after AO is configured.
+     */
+    rc = run_board_audio_hook("unmute");
+    if (rc) {
+        (void)simple(AC_CMD_AO_DISABLE, 0);
+        ac_ao_enabled = 0;
+        return rc;
+    }
+    return 0;
 }
 
 int FH_AC_AO_Disable(void)
 {
-    int rc;
+    int hook_rc, rc;
+
     if (!ac_ao_enabled)
         return 0;
+
+    /* Mute the physical amplifier before tearing down the RTX AO path. */
+    hook_rc = run_board_audio_hook("mute");
     rc = simple(AC_CMD_AO_DISABLE, 0);
     if (!rc)
         ac_ao_enabled = 0;
-    return rc;
+    return hook_rc ? hook_rc : rc;
 }
 int FH_AC_AI_SetVol(uint32_t v) { return simple(AC_CMD_AI_VOLUME, v); }
 int FH_AC_AI_MICIN_SetVol(uint32_t v) { return simple(AC_CMD_AI_MICIN_VOL, v); }
