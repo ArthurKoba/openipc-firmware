@@ -2,6 +2,7 @@ config BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT
 	bool "FH8626V100 Majestic FH8852V200 compatibility runtime"
 	depends on BR2_arm
 	depends on BR2_TOOLCHAIN_USES_MUSL
+	select BR2_PACKAGE_FULLHAN_MEDIA_FH8626V100
 	select BR2_PACKAGE_JSON_C
 	select BR2_PACKAGE_LIBEVENT_OPENIPC
 	select BR2_PACKAGE_LIBOGG_OPENIPC
@@ -17,6 +18,11 @@ config BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT
 	  Majestic HTTP/WebUI is untouched and owns its normal ports directly.
 	  The package selects the stock WebUI and Majestic font asset needed by
 	  the OSD feature profile.
+
+	  The still-proprietary FH8626 kernel/ARC media runtime is an explicit
+	  dependency of this compatibility package. Sensor/MIPI and the Majestic-
+	  facing userspace ABI remain source-owned here; FH8852 kernel payloads are
+	  never installed.
 
 	  Source compatibility covers the active Fullhan feature closure:
 	  GC1054/MIPI, VMM, SYS/VPSS, multi-channel H.264 VENC/RC/stream,
