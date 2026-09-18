@@ -81,6 +81,12 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 755 \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-media-run \
 		$(TARGET_DIR)/usr/bin/majestic-fh8626-media-run
+	$(INSTALL) -m 755 \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-stub-run \
+		$(TARGET_DIR)/usr/bin/majestic-fh8626-stub-run
+	$(INSTALL) -m 755 \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-native-video-run \
+		$(TARGET_DIR)/usr/bin/majestic-fh8626-native-video-run
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/etc
 	$(INSTALL) -m 644 \
