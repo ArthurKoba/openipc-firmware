@@ -1999,6 +1999,51 @@ int _JPEG_GetDropAttr(void *opaque, uint32_t chn, uint32_t *attr)
     return 0;
 }
 
+int _JPEG_GetHwAvgTime(void *opaque, uint32_t chn, uint32_t *out)
+{
+    uint32_t wire[4];
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !out ||
+        !(mode = jpeg_mode[chn]))
+        return -EINVAL;
+    if ((rc = open_jpeg()))
+        return rc;
+
+    memset(wire, 0, sizeof(wire));
+    wire[0] = mode;
+    rc = call_ioctl(jpeg_fd, FH8626_JPEG_HW_AVG_TIME, wire);
+    if (rc)
+        return rc;
+
+    /*
+     * FH8852 public object has five reported values at words 0,1,4,5,6.
+     * FH8626 jpeg.ko exposes only avg/max/window through its 0x10-byte wire.
+     * Preserve the common metrics and explicitly zero unavailable extensions.
+     */
+    memset(out, 0, 7u * sizeof(*out));
+    out[0] = wire[1]; /* average hardware time */
+    out[1] = wire[2]; /* maximum hardware time */
+    out[4] = wire[3]; /* averaging window */
+    return 0;
+}
+
+
+/*
+ * FH8626V100 stock enc.ko registers only media stream kind 4 (H.264) and the
+ * H.264 PAE callback path. No HEVC encoder module/stream registration exists
+ * in the retained AJL33PQ0866 stock stack. Never turn H.265 into a permissive
+ * success: callers must see that this SoC/driver path does not provide it.
+ */
+int FH_VENC_GetH265Dblk(void) { return -ENOTSUP; }
+int FH_VENC_GetH265IntraFresh(void) { return -ENOTSUP; }
+int FH_VENC_GetH265SliceSplit(void) { return -ENOTSUP; }
+int FH_VENC_SetH265Dblk(void) { return -ENOTSUP; }
+int FH_VENC_SetH265IntraFresh(void) { return -ENOTSUP; }
+int FH_VENC_SetH265SliceSplit(void) { return -ENOTSUP; }
+
 /* Loader-complete optional FH8852 DSP/JPEG surface. */
 SIMPLE_STUB0(FH_SYS_GetChipID)
 SIMPLE_STUB0(FH_SYS_GetReg)
@@ -2006,15 +2051,9 @@ SIMPLE_STUB0(FH_SYS_GetVersion)
 SIMPLE_STUB0(FH_SYS_GetVirtAddress)
 SIMPLE_STUB0(FH_SYS_SetReg)
 SIMPLE_STUB0(FH_VENC_GetDeBreathEffect)
-SIMPLE_STUB0(FH_VENC_GetH265Dblk)
-SIMPLE_STUB0(FH_VENC_GetH265IntraFresh)
-SIMPLE_STUB0(FH_VENC_GetH265SliceSplit)
 SIMPLE_STUB0(FH_VENC_GetHwAvgTime)
 SIMPLE_STUB0(FH_VENC_SetDeBreathEffect)
 SIMPLE_STUB0(FH_VENC_SetEncryptSeed)
-SIMPLE_STUB0(FH_VENC_SetH265Dblk)
-SIMPLE_STUB0(FH_VENC_SetH265IntraFresh)
-SIMPLE_STUB0(FH_VENC_SetH265SliceSplit)
 SIMPLE_STUB0(FH_VENC_Submit_ENC)
 SIMPLE_STUB0(FH_VENC_Submit_ENC_Ex)
 SIMPLE_STUB0(FH_VPSS_ClearMask)
@@ -2071,4 +2110,3 @@ SIMPLE_STUB0(FH_VPSS_SetRGBPreAttr)
 SIMPLE_STUB0(FH_VPSS_SetYCmeanMode)
 SIMPLE_STUB0(FH_VPSS_UnlockChnFrameAdv)
 SIMPLE_STUB0(FH_VPSS_WriteMallocedMem)
-SIMPLE_STUB0(_JPEG_GetHwAvgTime)
