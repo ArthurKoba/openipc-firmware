@@ -963,10 +963,121 @@ int FH_VENC_ReleaseStream(uint32_t chn, void *stream)
     return rc;
 }
 
+static int h264_translate_public_rc(uint32_t chn, const uint32_t *a,
+                                    struct pae_rc *rate)
+{
+    if (!a || !rate)
+        return -EINVAL;
+    memset(rate, 0, sizeof(*rate));
+    rate->chn = chn;
+
+    switch (a[0]) {
+    case 3u: /* FH_RC_H264_VBR */
+        rate->rc_mode = 0;
+        rate->frame_rate_packed = a[7];
+        rate->init_qp = a[1];
+        rate->bitrate_or_rate = a[2];
+        rate->i_min_qp = a[3];
+        rate->i_max_qp = a[4];
+        rate->p_min_qp = a[5];
+        rate->p_max_qp = a[6];
+        rate->i_proportion = a[11];
+        rate->p_proportion = a[12];
+        rate->fluctuate_level = a[13];
+        rate->ip_qp_delta = (int32_t)a[10];
+        rate->i_target_limit_bits = a[9];
+        rate->max_rate_percent = a[8];
+        break;
+    case 4u: /* FH_RC_H264_CBR */
+        rate->rc_mode = 1;
+        rate->frame_rate_packed = a[3];
+        rate->init_qp = a[1];
+        rate->bitrate_or_rate = a[2];
+        rate->i_min_qp = 10;
+        rate->i_max_qp = 50;
+        rate->p_min_qp = 10;
+        rate->p_max_qp = 50;
+        rate->i_proportion = a[7];
+        rate->p_proportion = a[8];
+        rate->fluctuate_level = a[9];
+        rate->ip_qp_delta = (int32_t)a[6];
+        rate->i_target_limit_bits = a[5];
+        rate->max_rate_percent = a[4];
+        break;
+    case 5u: /* fixed-QP public mode */
+        rate->rc_mode = 2;
+        rate->frame_rate_packed = a[3];
+        rate->mode2_qp_a = a[1];
+        rate->mode2_qp_b = a[2];
+        rate->i_min_qp = a[1];
+        rate->i_max_qp = a[1];
+        rate->p_min_qp = a[2];
+        rate->p_max_qp = a[2];
+        break;
+    case 6u: /* FH_RC_H264_AVBR */
+        rate->rc_mode = 4;
+        rate->frame_rate_packed = a[7];
+        rate->init_qp = a[1];
+        rate->bitrate_or_rate = a[2];
+        rate->i_min_qp = a[3];
+        rate->i_max_qp = a[4];
+        rate->p_min_qp = a[5];
+        rate->p_max_qp = a[6];
+        rate->i_proportion = a[11];
+        rate->p_proportion = a[12];
+        rate->fluctuate_level = a[13];
+        rate->ip_qp_delta = (int32_t)a[10];
+        rate->i_target_limit_bits = a[9];
+        rate->max_rate_percent = a[8];
+        rate->still_rate_percent = a[14];
+        rate->max_still_qp = a[15];
+        break;
+    case 0xbu: /* FH_RC_H264_CVBR */
+        rate->rc_mode = 5;
+        rate->frame_rate_packed = a[9];
+        rate->init_qp = a[1];
+        rate->bitrate_or_rate = a[3];
+        rate->i_min_qp = a[5];
+        rate->i_max_qp = a[6];
+        rate->p_min_qp = a[7];
+        rate->p_max_qp = a[8];
+        rate->i_proportion = a[12];
+        rate->p_proportion = a[13];
+        rate->fluctuate_level = a[14];
+        rate->ip_qp_delta = (int32_t)a[11];
+        rate->i_target_limit_bits = a[10];
+        rate->max_rate_percent = a[4];
+        rate->still_rate_percent = 30;
+        rate->max_still_qp = 34;
+        rate->additional_rate_bits = a[2];
+        rate->extra_qp_parameter = a[15];
+        break;
+    default:
+        return -ENOTSUP;
+    }
+
+    if (!(rate->frame_rate_packed & 0xffffu) ||
+        !(rate->frame_rate_packed >> 16) ||
+        rate->init_qp > 51u)
+        return -EINVAL;
+    return 0;
+}
+
 int FH_VENC_SetRCAttr(uint32_t chn, const void *attr)
 {
-    trace_words("FH_VENC_SetRCAttr", chn, attr, 24);
-    return strict_stub("FH_VENC_SetRCAttr");
+    struct pae_rc rate;
+    int rc;
+
+    if (!attr || chn != 0)
+        return -EINVAL;
+    trace_words("FH_VENC_SetRCAttr", chn, attr, 16);
+    if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
+        return strict_stub("FH_VENC_SetRCAttr");
+    if ((rc = h264_translate_public_rc(chn, attr, &rate)))
+        return rc;
+    if ((rc = open_native()))
+        return rc;
+    return call_ioctl(pae_fd, FH8626_PAE_SET_RC, &rate);
 }
 
 int FH_VENC_SetRcChangeParam(uint32_t chn, const void *attr)
