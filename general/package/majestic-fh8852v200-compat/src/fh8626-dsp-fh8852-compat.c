@@ -462,20 +462,35 @@ int FH_VPSS_Disable(uint32_t chn)
     return call_ioctl(isp_fd, FH8626_VPU_ENABLE, &enable);
 }
 
-int FH_VPSS_SetFramectrl(uint32_t chn, const uint32_t pair[2])
+int FH_VPSS_SetFramectrl(uint32_t chn, const uint16_t pair[2])
 {
-    /*
-     * FH8852 SetFramectrl(chn,{N,D}) is not the same wire as the recovered
-     * FH8626 {chn,packed_fps}. Keep it explicit until the conversion is proved.
-     */
-    trace_words("FH_VPSS_SetFramectrl", chn, pair, 2);
-    return strict_stub("FH_VPSS_SetFramectrl");
+    uint32_t wire[2];
+    int rc;
+
+    if (chn > 4u || !pair || !pair[0] || !pair[1])
+        return -EINVAL;
+    wire[0] = chn;
+    wire[1] = (uint32_t)pair[0] | ((uint32_t)pair[1] << 16);
+    if ((rc = open_native()))
+        return rc;
+    return call_ioctl(isp_fd, FH8626_VPU_SET_FRAMECTRL, wire);
 }
 
-int FH_VPSS_GetFramectrl(uint32_t chn, uint32_t pair[2])
+int FH_VPSS_GetFramectrl(uint32_t chn, uint16_t pair[2])
 {
-    trace_words("FH_VPSS_GetFramectrl", chn, pair, 2);
-    return strict_stub("FH_VPSS_GetFramectrl");
+    uint32_t wire[2] = {chn, 0};
+    int rc;
+
+    if (chn > 4u || !pair)
+        return -EINVAL;
+    if ((rc = open_native()))
+        return rc;
+    rc = call_ioctl(isp_fd, FH8626_VPU_GET_FRAMECTRL, wire);
+    if (rc)
+        return rc;
+    pair[0] = (uint16_t)(wire[1] & 0xffffu);
+    pair[1] = (uint16_t)(wire[1] >> 16);
+    return 0;
 }
 
 int FH_VPSS_FreezeVideo(void) { return 0; }
