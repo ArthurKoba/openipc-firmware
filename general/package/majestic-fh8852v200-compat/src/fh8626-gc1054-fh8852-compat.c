@@ -409,7 +409,7 @@ static int compat_get_ae_default(uint32_t value[6])
     rc = native_base_frame_length(&base_frame_length);
     if (rc)
         return rc;
-    if (native_control_query("MAX_INTT_DIFF", &margin))
+    if (native_get_u32(FH8626_MAX_INTT_DELTA, &margin))
         margin = 5u;
 
     value[0] = 1u; /* selected linear GC1054 path */
@@ -464,7 +464,7 @@ static int compat_calc_valid_intt(uint32_t *value)
         return -EINVAL;
     if ((rc = native_frame_length(&frame_length)))
         return rc;
-    if (native_control_query("MAX_INTT_DIFF", &margin))
+    if (native_get_u32(FH8626_MAX_INTT_DELTA, &margin))
         margin = 5u;
     maximum = frame_length > margin ? frame_length - margin : 1u;
     if (*value == 0u)
