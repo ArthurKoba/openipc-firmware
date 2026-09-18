@@ -254,34 +254,6 @@ static void trace_words(const char *name, uint32_t chn, const void *ptr,
 }
 
 
-/*
- * libisp.so from the FH8852 donor imports buffer_malloc_withname.  The donor
- * libvmm allocation record is 0x50 bytes while FH8626 uses the recovered
- * 0x68-byte VMM record, so intercept that dependency here.  The public buffer
- * wrapper stores {phys,virt,size}; this is visible in the donor wrapper itself.
- */
-int buffer_malloc_withname(struct mem3 *out, uint32_t size,
-                           uint32_t flags, const char *name)
-{
-    (void)flags;
-    if (!out || !size)
-        return -EINVAL;
-    memset(out, 0, sizeof(*out));
-    return alloc_vmm(name && name[0] ? name : "majestic-buffer", size, out);
-}
-
-int buffer_malloc_withname_cached(struct mem3 *out, uint32_t size,
-                                  uint32_t flags, const char *name)
-{
-    return buffer_malloc_withname(out, size, flags, name);
-}
-
-int buffer_malloc(struct mem3 *out, uint32_t size)
-{
-    return buffer_malloc_withname(out, size, 0, "majestic-buffer");
-}
-
-
 /* --- SYS --- */
 
 int FH_SYS_Init(void)
