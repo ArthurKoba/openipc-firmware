@@ -8,7 +8,7 @@
 # the exact native-HAL candidate under test; replace with OpenIPC provenance
 # once the implementation is accepted upstream.
 DIVINUS_SITE = $(call github,ArthurKoba,openipc-divinus,$(DIVINUS_VERSION))
-DIVINUS_VERSION = 168b2ecfeffcb53c2ed2a1d86c4897fdd3423820
+DIVINUS_VERSION = f986a82f309b8794a5aae251589c6a5d07690c53
 DIVINUS_LICENSE = MIT
 DIVINUS_LICENSE_FILES = LICENSE
 
@@ -16,6 +16,12 @@ ifeq ($(BR2_TOOLCHAIN_USES_GLIBC),y)
 	DIVINUS_OPTIONS = "-rdynamic -s -Os -lm"
 else
 	DIVINUS_OPTIONS = "-rdynamic -s -Os"
+endif
+
+# Make the test image independent of compiler predefined-architecture spelling.
+# Runtime identification still decides whether the FH8626 provider is selected.
+ifeq ($(BR2_OPENIPC_SOC_MODEL),fh8626v100)
+	DIVINUS_OPTIONS = "-rdynamic -s -Os -DFH8626_NATIVE_KERNEL"
 endif
 
 define DIVINUS_BUILD_CMDS
