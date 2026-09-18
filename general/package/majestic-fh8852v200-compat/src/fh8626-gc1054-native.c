@@ -43,18 +43,28 @@ extern void mipi_init(int *words);
 
 static int sensor_device_init(void)
 {
-    if (sensor_fd >= 0)
+    int rc;
+
+    if (sensor_fd >= 0) {
         close(sensor_fd);
+        sensor_fd = -1;
+    }
 
     sensor_fd = open(FH8626_GC1054_I2C_DEVICE, O_RDWR | O_CLOEXEC);
     if (sensor_fd < 0)
         return -errno;
 
-    if (ioctl(sensor_fd, FH8626_GC1054_I2C_IOCTL_TENBIT, 0) < 0)
-        return -errno;
+    if (ioctl(sensor_fd, FH8626_GC1054_I2C_IOCTL_TENBIT, 0) < 0) {
+        rc = -errno;
+        (void)sensor_device_close();
+        return rc;
+    }
     if (ioctl(sensor_fd, FH8626_GC1054_I2C_IOCTL_FORCE,
-              FH8626_GC1054_I2C_FORCE_ARG) < 0)
-        return -errno;
+              FH8626_GC1054_I2C_FORCE_ARG) < 0) {
+        rc = -errno;
+        (void)sensor_device_close();
+        return rc;
+    }
     return 0;
 }
 
