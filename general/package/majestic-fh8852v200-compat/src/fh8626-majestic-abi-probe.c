@@ -14,18 +14,6 @@ struct symbol {
     int required;
 };
 
-static const struct library donor_libraries[] = {
-    { "/usr/lib/majestic-fh8852v200/libvmm.so" },
-    { "/usr/lib/majestic-fh8852v200/libdsp.so" },
-    { "/usr/lib/majestic-fh8852v200/libmipi.so" },
-    { "/usr/lib/majestic-fh8852v200/libispcore.so" },
-    { "/usr/lib/majestic-fh8852v200/libisp.so" },
-    { "/usr/lib/majestic-fh8852v200/libadvapi.so" },
-    { "/usr/lib/majestic-fh8852v200/libadvapi_isp.so" },
-    { "/usr/lib/majestic-fh8852v200/libadvapi_md.so" },
-    { "/usr/lib/majestic-fh8852v200/libadvapi_osd.so" },
-    { "/usr/lib/majestic-fh8852v200/libadvapi_smartir.so" },
-};
 
 static const char *devices[] = {
     "/dev/vmm_userdev",
@@ -216,48 +204,34 @@ static int probe_symbols(void)
 int main(int argc, char **argv)
 {
     enum {
-        DONOR_COUNT = sizeof(donor_libraries) / sizeof(donor_libraries[0]),
         COMPAT_COUNT = sizeof(compatibility_libraries) /
                        sizeof(compatibility_libraries[0])
     };
-    void *handles[COMPAT_COUNT > DONOR_COUNT ? COMPAT_COUNT : DONOR_COUNT];
-    const struct library *set;
-    size_t count;
-    const char *title;
+    void *handles[COMPAT_COUNT];
     int devices_missing;
     int symbols_missing;
 
     memset(handles, 0, sizeof(handles));
-    puts("FH8626V100 Majestic compatibility ABI probe");
+    puts("FH8626V100 Majestic selected-runtime ABI probe");
     devices_missing = probe_devices();
 
-    if (argc != 2 ||
-        (strcmp(argv[1], "--donor") && strcmp(argv[1], "--compat"))) {
-        fprintf(stderr, "usage: %s {--donor|--compat}\n", argv[0]);
+    if (argc != 2 || strcmp(argv[1], "--compat")) {
+        fprintf(stderr, "usage: %s --compat\n", argv[0]);
         return 64;
     }
 
-    if (!strcmp(argv[1], "--donor")) {
-        set = donor_libraries;
-        count = DONOR_COUNT;
-        title = "donor-baseline-libraries:";
-    } else {
-        set = compatibility_libraries;
-        count = COMPAT_COUNT;
-        title = "fh8626-source-compatibility-libraries:";
-    }
-
-    if (load_set(title, set, count, handles)) {
-        close_set(handles, count);
+    if (load_set("selected-runtime-libraries:",
+                 compatibility_libraries, COMPAT_COUNT, handles)) {
+        close_set(handles, COMPAT_COUNT);
         fprintf(stderr, "probe result: selected dependency closure is not loadable\n");
         return 2;
     }
 
     symbols_missing = probe_symbols();
-    close_set(handles, count);
+    close_set(handles, COMPAT_COUNT);
 
-    printf("probe result: mode=%s devices_missing=%d required_symbols_missing=%d\n",
-           argv[1], devices_missing, symbols_missing);
+    printf("probe result: mode=compat devices_missing=%d required_symbols_missing=%d\n",
+           devices_missing, symbols_missing);
 
     return symbols_missing ? 3 : 0;
 }
