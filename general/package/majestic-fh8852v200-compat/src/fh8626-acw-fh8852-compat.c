@@ -276,10 +276,12 @@ static int run_board_audio_hook(const char *action)
         _exit(127);
     }
 
-    do {
+    for (;;) {
         if (waitpid(pid, &status, 0) >= 0)
             break;
-    } while (errno == EINTR);
+        if (errno != EINTR)
+            return errno ? -errno : -EIO;
+    }
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         return -EIO;
     return 0;
