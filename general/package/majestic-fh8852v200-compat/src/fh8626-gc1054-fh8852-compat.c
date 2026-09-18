@@ -27,8 +27,10 @@ enum {
     FH8626_NAME       = 0x00,
     FH8626_SET_GAIN   = 0x04,
     FH8626_GET_VI     = 0x08,
+    FH8626_GET_GAIN   = 0x0c,
     FH8626_SET_INTT   = 0x10,
     FH8626_UPDATE     = 0x14,
+    FH8626_GET_INTT   = 0x18,
     FH8626_SET_MIRROR = 0x1c,
     FH8626_GET_MIRROR = 0x20,
     FH8626_INIT       = 0x28,
@@ -36,9 +38,11 @@ enum {
     FH8626_SET_FMT    = 0x34,
     FH8626_KICK       = 0x38,
     FH8626_WRITE_REG  = 0x3c,
+    FH8626_MAX_INTT_DELTA = 0x40,
     FH8626_CONTROL    = 0x4c,
     FH8626_AWB_QUERY  = 0x58,
     FH8626_AWB_SET    = 0x5c,
+    FH8626_COMMAND    = 0x64,
 };
 
 struct fh8852_sensor_if {
@@ -84,6 +88,8 @@ static uint8_t *native_if;
 static int strict_mode = -1;
 static uint32_t mirror_flip;
 static uint32_t awb_gain[3];
+static uint32_t exposure_ratio = 0x100u;
+static uint32_t lane_num_max = 2u;
 
 static int strict(void)
 {
@@ -185,6 +191,53 @@ static int call2(unsigned off, uintptr_t a0, uintptr_t a1)
     return fn ? fn(a0, a1) : -ENOSYS;
 }
 
+static int native_control_query(const char *name, uint32_t *value)
+{
+    typedef int (*fn_t)(const char *, uint32_t *);
+    fn_t fn = NULL;
+
+    if (!name || !value)
+        return -EINVAL;
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = native_cb(FH8626_CONTROL);
+    return fn ? fn(name, value) : -ENOSYS;
+}
+
+static int native_frame_length(uint32_t *frame_length)
+{
+    typedef int (*fn_t)(uint32_t, void *);
+    fn_t fn = NULL;
+    uint16_t value = 0;
+    int rc;
+
+    if (!frame_length)
+        return -EINVAL;
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = native_cb(FH8626_COMMAND);
+    if (!fn)
+        return -ENOSYS;
+    rc = fn(1u, &value);
+    if (rc < 0)
+        return rc;
+    *frame_length = value;
+    return 0;
+}
+
+static int native_get_u32(unsigned off, uint32_t *value)
+{
+    typedef int (*fn_t)(uint32_t *);
+    fn_t fn = NULL;
+
+    if (!value)
+        return -EINVAL;
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = native_cb(off);
+    return fn ? fn(value) : -ENOSYS;
+}
+
 static int compat_get_vi_attr(void *attr)
 {
     return call1(FH8626_GET_VI, (uintptr_t)attr);
@@ -217,10 +270,10 @@ static int compat_get_flip_mirror(uint32_t *value)
     return rc;
 }
 
-static int compat_set_iris(uint32_t value)
+static int compat_set_iris(void)
 {
-    (void)value;
-    return unresolved("SetSensorIris");
+    /* All three audited FH8852 donor sensors implement this as success/no-op. */
+    return 0;
 }
 
 int Sensor_Init(void)
@@ -228,10 +281,13 @@ int Sensor_Init(void)
     return call0(FH8626_INIT);
 }
 
-static int compat_reset(void)
+static int compat_reset(uint32_t value)
 {
-    /* GPIO5 reset/bootstrap is board-owned on AJL33PQ0866. */
-    return unresolved("SensorReset");
+    /*
+     * Audited FH8852 donor sensors return the argument unchanged. Physical
+     * GPIO5 bootstrap/reset policy remains board-owned on AJL33PQ0866.
+     */
+    return (int)value;
 }
 
 int Sensor_DeInit(void)
@@ -270,27 +326,37 @@ int Sensor_Read(uint32_t reg)
 
 static int compat_set_exposure_ratio(uint32_t value)
 {
-    (void)value;
-    return unresolved("SetExposureRatio");
+    exposure_ratio = value;
+    return 0;
 }
 
 static int compat_get_exposure_ratio(uint32_t *value)
 {
-    if (value)
-        *value = 1;
-    return value ? unresolved("GetExposureRatio") : -EINVAL;
+    if (!value)
+        return -EINVAL;
+    /*
+     * The selected GC1054 path is linear (non-WDR). Retain the public ratio
+     * state set by FH8852 rather than inventing a short-exposure channel.
+     */
+    *value = exposure_ratio;
+    return 0;
 }
 
-static int compat_get_sensor_attribute(void *attr)
+static int compat_get_sensor_attribute(const char *name, uint32_t *value)
 {
-    (void)attr;
-    return unresolved("GetSensorAttribute");
+    if (!name || !value)
+        return -EINVAL;
+    if (!strcmp(name, "WDR")) {
+        *value = 0;
+        return 0;
+    }
+    return -1;
 }
 
 static int compat_set_lane_num_max(uint32_t lanes)
 {
-    (void)lanes;
-    return unresolved("SetLaneNumMax");
+    lane_num_max = lanes;
+    return 0;
 }
 
 static int compat_get_reg(uint32_t reg)
@@ -331,68 +397,135 @@ static int compat_set_awb_gain(uint32_t gain[3])
     return 0;
 }
 
-static int compat_common_if(uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3)
+static int compat_common_if(uint32_t command, void *arg, uint32_t reserved)
 {
-    typedef int (*fn_t)(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
-    fn_t fn = NULL;
-
-    if (native_open())
-        return -EIO;
-    *(void **)(&fn) = native_cb(FH8626_CONTROL);
-    return fn ? fn(a0, a1, a2, a3) : unresolved("SensorCommonIf");
+    (void)command;
+    (void)arg;
+    (void)reserved;
+    /*
+     * GC4653 and JXF32 FH8852 donors return -1 for this optional interface.
+     * Do not pass integer FH8852 commands into the unrelated FH8626 string
+     * control-query callback.
+     */
+    return -1;
 }
 
-static int compat_get_ae_default(void *value)
+static int compat_get_ae_default(uint32_t value[6])
 {
-    (void)value;
-    return unresolved("GetAEDefault");
+    uint32_t frame_length;
+    uint32_t margin = 5u;
+    uint32_t gain = 0x40u;
+    int rc;
+
+    if (!value)
+        return -EINVAL;
+    rc = native_frame_length(&frame_length);
+    if (rc)
+        return rc;
+    if (native_control_query("MAX_INTT_DIFF", &margin))
+        margin = 5u;
+    if (native_get_u32(FH8626_GET_GAIN, &gain))
+        gain = 0x40u;
+
+    value[0] = 1u; /* selected linear GC1054 path */
+    value[1] = frame_length > margin ? frame_length - margin : 1u;
+    value[2] = gain;
+    value[3] = 0u; /* donor-specific max-gain hint is not consumed by libispcore */
+    value[4] = frame_length;
+    value[5] = margin;
+    return 0;
 }
 
-static int compat_get_ae_info(void *value)
+static int compat_get_ae_info(uint32_t value[4])
 {
-    (void)value;
-    return unresolved("GetAEInfo");
+    uint32_t frame_length;
+    uint32_t fps10000 = 250000u;
+    int rc;
+
+    if (!value)
+        return -EINVAL;
+    if ((rc = native_get_u32(FH8626_GET_INTT, &value[0])))
+        return rc;
+    if ((rc = native_get_u32(FH8626_GET_GAIN, &value[1])))
+        return rc;
+    if ((rc = native_frame_length(&frame_length)))
+        return rc;
+    if (native_control_query("CUR_FRAME_RATE", &fps10000))
+        fps10000 = 250000u;
+
+    value[2] = frame_length * ((fps10000 + 5000u) / 10000u);
+    value[3] = frame_length;
+    return 0;
 }
 
-static int compat_set_intt(uint32_t value)
+static int compat_set_intt(uint32_t value, uint32_t exposure_index)
 {
+    if (exposure_index != 0u)
+        return 0;
     return call1(FH8626_SET_INTT, value);
 }
 
-static int compat_calc_valid_intt(uint32_t requested, uint32_t *valid)
+static int compat_calc_valid_intt(uint32_t *value)
 {
-    if (valid)
-        *valid = requested;
-    return valid ? unresolved("CalcSnsValidIntt") : -EINVAL;
+    uint32_t frame_length;
+    uint32_t margin = 5u;
+    uint32_t maximum;
+    int rc;
+
+    if (!value)
+        return -EINVAL;
+    if ((rc = native_frame_length(&frame_length)))
+        return rc;
+    if (native_control_query("MAX_INTT_DIFF", &margin))
+        margin = 5u;
+    maximum = frame_length > margin ? frame_length - margin : 1u;
+    if (*value == 0u)
+        *value = 1u;
+    if (*value > maximum)
+        *value = maximum;
+    return 0;
 }
 
-static int compat_set_gain(uint32_t value)
+static int compat_set_gain(uint32_t value, uint32_t exposure_index)
 {
+    if (exposure_index != 0u)
+        return 0;
     return call1(FH8626_SET_GAIN, value);
 }
 
-static int compat_calc_valid_gain(uint32_t requested, uint32_t *valid)
+static int compat_calc_valid_gain(uint32_t *value)
 {
-    if (valid)
-        *valid = requested;
-    return valid ? unresolved("CalcSnsValidGain") : -EINVAL;
+    if (!value)
+        return -EINVAL;
+    /*
+     * Stock GC1054 SetGain performs its own quantization. The audited FH8852
+     * GC4653/MN34425 valid-gain callbacks likewise accept the requested value.
+     */
+    if (*value < 0x40u)
+        *value = 0x40u;
+    return 0;
 }
 
 static int compat_set_frame_h(uint32_t value)
 {
-    (void)value;
-    /*
-     * FH8626 +0x14 is a recovered VTS-multiplier operation, not proven to be
-     * wire-compatible with FH8852 SetSnsFrameH. Do not conflate them.
-     */
-    return unresolved("SetSnsFrameH");
+    typedef int (*fn_t)(uint32_t);
+    fn_t fn = NULL;
+
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = dlsym(native_handle, "Sensor_SetFrameLength");
+    return fn ? fn(value) : -ENOSYS;
 }
 
-static int compat_get_mirror_bayer(uint32_t *value)
+static const uint32_t *compat_get_mirror_bayer(void)
 {
-    if (value)
-        *value = mirror_flip;
-    return value ? unresolved("GetMirrorFlipBayerFormat") : -EINVAL;
+    typedef const uint32_t *(*fn_t)(void);
+    fn_t fn = NULL;
+
+    if (native_open())
+        return NULL;
+    *(void **)(&fn) = dlsym(native_handle, "GetMirrorFlipBayerFormat");
+    return fn ? fn() : NULL;
 }
 
 static int compat_get_user_awb_gain(uint32_t gain[3])
@@ -400,10 +533,10 @@ static int compat_get_user_awb_gain(uint32_t gain[3])
     return compat_get_awb_gain(gain);
 }
 
-static int compat_get_ltm_curve(void *curve)
+static void *compat_get_ltm_curve(void)
 {
-    (void)curve;
-    return unresolved("GetSensorLtmCurve");
+    /* Stock FH8626 GC1054 returns NULL for this optional callback. */
+    return NULL;
 }
 
 int Sensor_Isconnect(void)

@@ -295,6 +295,17 @@ static int gc_set_frame_length(uint32_t frame_length)
     return 0;
 }
 
+int Sensor_SetFrameLength(uint32_t frame_length)
+{
+    return gc_set_frame_length(frame_length);
+}
+
+const uint32_t *GetMirrorFlipBayerFormat(void)
+{
+    return orientation_mode ? fh8626_gc1054_bayer_map_oriented
+                            : fh8626_gc1054_bayer_map_normal;
+}
+
 static int gc_set_vts_multiplier(uint32_t multiplier)
 {
     const struct fh8626_gc1054_format_contract *f;
