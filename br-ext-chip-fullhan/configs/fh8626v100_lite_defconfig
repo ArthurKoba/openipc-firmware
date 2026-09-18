@@ -47,7 +47,9 @@ BR2_OPENIPC_FLASH_SIZE="8"
 BR2_PACKAGE_DROPBEAR_OPENIPC=y
 BR2_PACKAGE_DROPBEAR_OPENIPC_DISABLE_REVERSEDNS=y
 BR2_PACKAGE_HAVEGED=y
-BR2_PACKAGE_DIVINUS=y
+# Streamer is a direction-specific choice. The core FH8626V100 profile stays
+# neutral; Divinus and Majestic branches select their runtime explicitly.
+# BR2_PACKAGE_DIVINUS is not set
 BR2_PACKAGE_IPCTOOL=y
 # Wi-Fi chipset modules are device-profile choices; the generic FH8626V100
 # image does not select a particular USB adapter driver.
