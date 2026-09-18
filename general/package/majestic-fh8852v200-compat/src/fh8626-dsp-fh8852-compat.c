@@ -1895,6 +1895,110 @@ int _JPEG_ReleaseStream(void *opaque, uint32_t chn)
     return call_ioctl(jpeg_fd, FH8626_JPEG_RELEASE, &mode);
 }
 
+int _JPEG_SubmitFrameEx(void *opaque, uint32_t chn,
+                        const uint32_t *frame, uint32_t flags)
+{
+    uint32_t wire[12];
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !frame ||
+        !(mode = jpeg_mode[chn]))
+        return -EINVAL;
+
+    /*
+     * Recovered FH8852 public frame:
+     *   [0] Y address
+     *   [1] C address
+     *   [2] auxiliary/PTS low
+     *   [3] auxiliary/PTS high
+     *   [4] width
+     *   [5] height
+     * plus the Ex-only frame/crop selector in r3.
+     *
+     * jpeg.ko expects a 12-word submit record. Words 9/10 are duplicated
+     * width/height; the kernel normalizes them again in jpeg_usr_submit_frm.
+     */
+    memset(wire, 0, sizeof(wire));
+    wire[0] = mode;
+    wire[1] = frame[4];
+    wire[2] = frame[5];
+    wire[3] = frame[0];
+    wire[4] = frame[1];
+    wire[6] = frame[2];
+    wire[7] = frame[3];
+    wire[8] = flags;
+    wire[9] = frame[4];
+    wire[10] = frame[5];
+
+    if ((rc = open_jpeg()))
+        return rc;
+    return call_ioctl(jpeg_fd, FH8626_JPEG_SUBMIT_FRAME, wire);
+}
+
+int _JPEG_SubmitFrame(void *opaque, uint32_t chn, const uint32_t *frame)
+{
+    return _JPEG_SubmitFrameEx(opaque, chn, frame, 0u);
+}
+
+int _JPEG_SetDropAttr(void *opaque, uint32_t chn, const uint32_t *attr)
+{
+    uint32_t wire[9];
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !attr ||
+        jpeg_mode[chn] != FH8626_JPEG_MODE_MJPEG)
+        return -EINVAL;
+
+    /*
+     * Exact donor public->kernel mapping. Public words 3 and 7 are padding /
+     * unrelated fields for this request; packed frame ratios remain packed.
+     */
+    wire[0] = attr[0];
+    wire[1] = attr[1];
+    wire[2] = attr[2];
+    wire[3] = attr[4];
+    wire[4] = attr[5];
+    wire[5] = attr[6];
+    wire[6] = attr[8];
+    wire[7] = attr[9];
+    wire[8] = attr[10];
+
+    if ((rc = open_jpeg()))
+        return rc;
+    return call_ioctl(jpeg_fd, FH8626_MJPEG_SET_DROP, wire);
+}
+
+int _JPEG_GetDropAttr(void *opaque, uint32_t chn, uint32_t *attr)
+{
+    uint32_t wire[9] = {0};
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !attr ||
+        jpeg_mode[chn] != FH8626_JPEG_MODE_MJPEG)
+        return -EINVAL;
+    if ((rc = open_jpeg()))
+        return rc;
+    rc = call_ioctl(jpeg_fd, FH8626_MJPEG_GET_DROP, wire);
+    if (rc)
+        return rc;
+
+    memset(attr, 0, 11u * sizeof(*attr));
+    attr[0] = wire[0];
+    attr[1] = wire[1];
+    attr[2] = wire[2];
+    attr[4] = wire[3];
+    attr[5] = wire[4];
+    attr[6] = wire[5];
+    attr[8] = wire[6];
+    attr[9] = wire[7];
+    attr[10] = wire[8];
+    return 0;
+}
+
 /* Loader-complete optional FH8852 DSP/JPEG surface. */
 SIMPLE_STUB0(FH_SYS_GetChipID)
 SIMPLE_STUB0(FH_SYS_GetReg)
@@ -1967,8 +2071,4 @@ SIMPLE_STUB0(FH_VPSS_SetRGBPreAttr)
 SIMPLE_STUB0(FH_VPSS_SetYCmeanMode)
 SIMPLE_STUB0(FH_VPSS_UnlockChnFrameAdv)
 SIMPLE_STUB0(FH_VPSS_WriteMallocedMem)
-SIMPLE_STUB0(_JPEG_GetDropAttr)
 SIMPLE_STUB0(_JPEG_GetHwAvgTime)
-SIMPLE_STUB0(_JPEG_SetDropAttr)
-SIMPLE_STUB0(_JPEG_SubmitFrame)
-SIMPLE_STUB0(_JPEG_SubmitFrameEx)
