@@ -1,5 +1,5 @@
 #ifndef FH8626_LIBMIPI_H
-#define FH8626_LIBMIPI_REIMPLEMENTATION_H
+#define FH8626_LIBMIPI_H
 
 #include <stddef.h>
 #include <stdint.h>

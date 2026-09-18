@@ -178,7 +178,6 @@ static int gc_set_gain(uint32_t gain)
     struct fh8626_gc1054_gain_program p;
     int rc;
 
-    cached_gain = gain;
     p = fh8626_gc1054_gain_program(gain);
 
     rc = Sensor_Write(0xfe, 1);
@@ -194,6 +193,7 @@ static int gc_set_gain(uint32_t gain)
         (rc = Sensor_Write(0x40, p.page4_40)) ||
         (rc = Sensor_Write(0xfe, 0)))
         return rc;
+    cached_gain = gain;
     return 0;
 }
 
@@ -210,11 +210,11 @@ static int gc_set_intt(uint32_t integration)
     uint8_t r03, r04;
     int rc;
 
-    cached_intt = integration;
     fh8626_gc1054_integration_regs(integration, &r03, &r04);
     if ((rc = Sensor_Write(0x03, r03)) ||
         (rc = Sensor_Write(0x04, r04)))
         return rc;
+    cached_intt = integration;
     return 0;
 }
 
