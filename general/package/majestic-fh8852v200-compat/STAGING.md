@@ -47,7 +47,10 @@ The active FH8852V200 Majestic feature surface has source compatibility
 boundaries for the FH8626-specific ABI mismatches:
 
 - source GC1054 sensor facade, translating the FH8852 0x7c callback table onto
-  the recovered FH8626 0x68 sensor contract;
+  the recovered FH8626 0x68 sensor contract. The selected table is now typed
+  and complete except the deliberate reserved +0x48 slot; its signatures and
+  AE/frame-height semantics were cross-checked in Ghidra against FH8852
+  GC4653/JXF32/MN34425, FH8852 libisp/libispcore and stock FH8626 GC1054;
 - source MIPI implementation;
 - source VMM allocation/mapping facade;
 - SYS / VPSS translation including channel lifecycle, frame control, YC mean,
@@ -80,6 +83,28 @@ The retained donor userspace closure is intentionally small:
 
 The active GC1054, MIPI, VMM, DSP/VPSS/VENC and ACW MPI paths are source-built
 and must not silently fall back to donor equivalents.
+
+The GC1054 facade no longer contains permissive sensor callback stubs. Key
+recovered details include:
+
+- FH8852 `GetSensorReg(reg, out)` writes through an output pointer; it is not
+  the direct-value native FH8626 read form;
+- FH8852 `SetIntt/SetGain` carry an exposure index; the selected linear GC1054
+  owns index 0 and treats the second WDR index as inactive;
+- `GetAEDefault.word4` is the base format frame length used by FH8852
+  `isp_core_set_sensor_frame_height`;
+- `GetAEInfo` reports current integration/gain, base line-rate and current
+  frame height separately;
+- FH8852 integer-command `SensorCommonIf` is not the FH8626 string-query
+  control callback and is never bridged positionally;
+- `Sensor_Isconnect` is a self-contained I2C ID probe and works before
+  `Sensor_Init`;
+- same-process destroy/re-create closes sensor state without repeatedly
+  accumulating native dlopen references.
+
+The target ABI probe opens the selected sensor facade without starting media,
+calls `Sensor_Create()` and verifies every active callback slot from +0x00
+through +0x78; only reserved +0x48 may be NULL.
 
 The donor ISP/ispcore/advapi stack is retained because the recovered stock ISP
 API is a shared userspace context/state machine, not a simple ioctl shim.
@@ -197,11 +222,14 @@ feature surface. The next useful evidence is an exact build and target run:
 1. build the composed target and retain resolved Builder/Firmware/Linux SHAs;
 2. require `uImage <= 2048 KiB`;
 3. require `rootfs.squashfs <= 5120 KiB` and record headroom;
-4. verify all nine shared media-runtime artifacts are present;
+4. require the Builder provenance manifest to contain Majestic plus all nine
+   shared FH8626 media/ARC payloads and retain archive-level `SHA256SUMS`;
 5. boot the unchanged media-off Majestic baseline;
 6. verify `S70vendor` created the required media devices;
-7. run `majestic-fh8626-abi-probe`;
-8. record SHA-256 of the installed Majestic executable;
+7. run `majestic-fh8626-abi-probe`; it must pass selected-library loading,
+   required Fullhan symbols, required media devices and the complete sensor
+   callback table;
+8. retain the automatically recorded SHA-256 of the installed Majestic executable;
 9. run strict localization only if needed, then `majestic-fh8626-full-run`;
 10. prove simultaneous main/sub RTSP, runtime RC/GOP/readback, JPEG, OSD,
     motion, audio/talkback, day/night and repeated restart/reconfigure;
