@@ -125,6 +125,11 @@ struct fh_ac_frame {
     void *data;
 };
 
+struct fh_ac_raw_frame {
+    void *data;
+    uint32_t length;
+};
+
 _Static_assert(sizeof(struct ac_init_command) == 0x20, "AC init storage size");
 _Static_assert(sizeof(struct ac_simple_command) == 0x14, "AC simple storage size");
 _Static_assert(sizeof(struct ac_config_command) == 0x30, "AC config storage size");
@@ -235,13 +240,14 @@ static int query_value_command(uint32_t id, uint32_t *value)
     return 0;
 }
 
-int FH_AC_Init(void)
+static int ac_init_common(uint32_t external_codec)
 {
     struct ac_init_command r = {
         .size = 0x18,
         .size_a = 0x18,
         .size_b = 0x18,
         .opcode = 0x01040004u,
+        .reserved = external_codec,
     };
     int rc;
 
@@ -285,8 +291,9 @@ int FH_AC_Init(void)
 
     if (trace_enabled())
         fprintf(stderr,
-            "fh8626-acw-compat: init map=%08x+%u ao=%08x+%u\n",
-            ac_map_offset, ac_map_length, ac_ao_offset, ac_tail_length);
+            "fh8626-acw-compat: init external=%u map=%08x+%u ao=%08x+%u\n",
+            external_codec, ac_map_offset, ac_map_length,
+            ac_ao_offset, ac_tail_length);
     return 0;
 
 fail:
@@ -294,6 +301,16 @@ fail:
         close(ac_fd);
     ac_fd = -1;
     return rc;
+}
+
+int FH_AC_Init(void)
+{
+    return ac_init_common(0u);
+}
+
+int FH_AC_Init_WithExternalCodec(void)
+{
+    return ac_init_common(1u);
 }
 
 int FH_AC_DeInit(void)
@@ -631,6 +648,59 @@ int FH_AC_AO_QueryBufSize(uint32_t *v)
 /* Stock AJL bind policy is -1; command 25 is not part of retail parity. */
 int FH_AC_AI_Bind(void) { return -ENOTSUP; }
 
+int FH_AC_AI_HPF_ChangeCoff(const int16_t *coeff, uint32_t count)
+{
+    uint32_t ext[10] = {0};
+
+    if (!coeff || count < 1u || count > 16u)
+        return FH_AC_E_ARGUMENT;
+    ext[0] = 9u;
+    ext[1] = count;
+    memcpy(&ext[2], coeff, count * sizeof(*coeff));
+    return FH_AC_Ext_Ioctl(ext);
+}
+
+int FH_AC_Raw_SetConfig(const void *config)
+{
+    return payload_command(AC_CMD_RAW_CONFIG, config, 16u);
+}
+
+int FH_AC_Raw_GetFrameFast(struct fh_ac_raw_frame *frame)
+{
+    struct ac_frame_command r = {
+        .size = 16,
+        .size_a = 16,
+        .size_b = 8,
+        .opcode = 0x01008001u,
+    };
+    uint32_t relative;
+    int rc;
+
+    if (!frame)
+        return FH_AC_E_ARGUMENT;
+    frame->data = NULL;
+    frame->length = 0;
+
+    rc = command(&r);
+    if (rc)
+        return rc;
+    if (r.status)
+        return r.status;
+    if (!r.data_length)
+        return 0;
+    if (ac_map == MAP_FAILED || r.data_offset < ac_map_offset)
+        return FH_AC_E_RANGE;
+
+    relative = r.data_offset - ac_map_offset;
+    if (relative > ac_map_length ||
+        r.data_length > ac_map_length - relative)
+        return FH_AC_E_RANGE;
+
+    frame->data = ac_map + relative;
+    frame->length = r.data_length;
+    return 0;
+}
+
 const char *FH_AC_Version(void)
 {
     return "fh8626-rtx-compat";
@@ -639,8 +709,4 @@ const char *FH_AC_Version(void)
 
 /* Loader-complete optional FH8852 ACW surface. */
 #define AC_STUB0(name) int name(void) { return unsupported(#name); }
-AC_STUB0(FH_AC_AI_HPF_ChangeCoff)
 AC_STUB0(FH_AC_Ext2_Ioctl)
-AC_STUB0(FH_AC_Init_WithExternalCodec)
-AC_STUB0(FH_AC_Raw_GetFrameFast)
-AC_STUB0(FH_AC_Raw_SetConfig)
