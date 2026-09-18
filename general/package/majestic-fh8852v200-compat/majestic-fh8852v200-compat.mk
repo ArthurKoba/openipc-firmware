@@ -29,6 +29,7 @@ MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBS = \
 	libadvapi.so \
 	libadvapi_isp.so \
 	libadvapi_md.so \
+	libadvapi_osd.so \
 	libadvapi_smartir.so \
 	libdsp.so \
 	libisp.so \

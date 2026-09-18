@@ -51,6 +51,12 @@
 #define FH8626_VPU_SET_YCMEANMODE 0xC004696CUL
 #define FH8626_VPU_GET_VI_ATTR    0xC00C6947UL
 #define FH8626_VPU_GET_CHN_CFG    0xC00C6949UL
+#define FH8626_VPU_SET_LOGOV2     0xC448696DUL
+#define FH8626_VPU_GET_LOGOV2     0xC448696EUL
+#define FH8626_LOGOV2_WORDS       147u
+#define FH8852_GRAPHV2_WORDS      273u
+#define FH8626_LOGOV2_PLANES      2u
+#define FH8626_LOGOV2_PLANE_WORDS 128u
 
 #define FH8626_PAE_SYS_QUERY      0xC0045002UL
 #define FH8626_PAE_SYS_INIT       0xC00C5000UL
@@ -721,6 +727,115 @@ int FH_VPSS_GetChnAttr(uint32_t chn, uint32_t out[2])
     out[0] = wire[1];
     out[1] = wire[2];
     return 0;
+}
+
+
+static void graphv2_public_to_native(uint32_t selector, uint32_t plane,
+                                     const uint32_t *pub, uint32_t *wire)
+{
+    unsigned i;
+
+    memset(wire, 0, FH8626_LOGOV2_WORDS * sizeof(*wire));
+    wire[0] = selector;
+    wire[1] = pub[1]; /* graph index */
+    wire[2] = pub[0]; /* enable */
+    for (i = 2; i <= 16; ++i)
+        wire[i + 1] = pub[i];
+    wire[18] = plane;
+    memcpy(&wire[19],
+           &pub[17 + plane * FH8626_LOGOV2_PLANE_WORDS],
+           FH8626_LOGOV2_PLANE_WORDS * sizeof(uint32_t));
+}
+
+static void graphv2_native_header_to_public(const uint32_t *wire,
+                                            uint32_t *pub)
+{
+    unsigned i;
+
+    pub[0] = wire[2];
+    pub[1] = wire[1];
+    for (i = 2; i <= 16; ++i)
+        pub[i] = wire[i + 1];
+}
+
+static int graphv2_set(uint32_t selector, const uint32_t *pub)
+{
+    uint32_t wire[FH8626_LOGOV2_WORDS];
+    uint32_t plane;
+    int rc;
+
+    if (!pub)
+        return -EINVAL;
+    if ((rc = open_native()))
+        return rc;
+
+    for (plane = 0; plane < FH8626_LOGOV2_PLANES; ++plane) {
+        graphv2_public_to_native(selector, plane, pub, wire);
+        rc = call_ioctl(isp_fd, FH8626_VPU_SET_LOGOV2, wire);
+        if (rc)
+            return rc;
+    }
+    return 0;
+}
+
+static int graphv2_get(uint32_t selector, uint32_t *pub)
+{
+    uint32_t wire[FH8626_LOGOV2_WORDS];
+    uint32_t index, plane;
+    int rc;
+
+    if (!pub)
+        return -EINVAL;
+    index = pub[1];
+    memset(pub, 0, FH8852_GRAPHV2_WORDS * sizeof(*pub));
+    pub[1] = index;
+
+    if ((rc = open_native()))
+        return rc;
+
+    for (plane = 0; plane < FH8626_LOGOV2_PLANES; ++plane) {
+        memset(wire, 0, sizeof(wire));
+        wire[0] = selector;
+        wire[1] = index;
+        wire[18] = plane;
+        rc = call_ioctl(isp_fd, FH8626_VPU_GET_LOGOV2, wire);
+        if (rc)
+            return rc;
+        if (plane == 0)
+            graphv2_native_header_to_public(wire, pub);
+        memcpy(&pub[17 + plane * FH8626_LOGOV2_PLANE_WORDS],
+               &wire[19],
+               FH8626_LOGOV2_PLANE_WORDS * sizeof(uint32_t));
+    }
+    return 0;
+}
+
+int FH_VPSS_SetChnGraphV2(uint32_t chn, const uint32_t *graph)
+{
+    /*
+     * FH8626 native logo number 0 is global; channel graphs are numbered
+     * from 1. Stock product exposes two public video channels.
+     */
+    if (chn >= 2u)
+        return -ENOTSUP;
+    return graphv2_set(chn + 1u, graph);
+}
+
+int FH_VPSS_GetChnGraphV2(uint32_t chn, uint32_t *graph)
+{
+    if (chn >= 2u)
+        return -ENOTSUP;
+    return graphv2_get(chn + 1u, graph);
+}
+
+int FH_VPSS_SetGlbGraphV2(const uint32_t *graph)
+{
+    return graphv2_set(0u, graph);
+}
+
+int FH_VPSS_GetGlbGraphV2(uint32_t *graph)
+{
+    return graphv2_get(0u, graph);
 }
 
 /* --- VENC / PAE --- */
@@ -2175,10 +2290,8 @@ SIMPLE_STUB0(FH_VPSS_GetChnFrame)
 SIMPLE_STUB0(FH_VPSS_GetChnFrameAdv)
 SIMPLE_STUB0(FH_VPSS_GetChnFrameAdv_Ex)
 SIMPLE_STUB0(FH_VPSS_GetChnFrame_Ex)
-SIMPLE_STUB0(FH_VPSS_GetChnGraphV2)
 SIMPLE_STUB0(FH_VPSS_GetFrameBufferSize)
 SIMPLE_STUB0(FH_VPSS_GetFrameRate)
-SIMPLE_STUB0(FH_VPSS_GetGlbGraphV2)
 SIMPLE_STUB0(FH_VPSS_GetGraph)
 SIMPLE_STUB0(FH_VPSS_GetHwAvgTime)
 SIMPLE_STUB0(FH_VPSS_GetMallocedMemBase)
@@ -2199,9 +2312,7 @@ SIMPLE_STUB0(FH_VPSS_ReadMallocedMem)
 SIMPLE_STUB0(FH_VPSS_SendUserPic)
 SIMPLE_STUB0(FH_VPSS_SetChn2LogoSel)
 SIMPLE_STUB0(FH_VPSS_SetChnApcAttr)
-SIMPLE_STUB0(FH_VPSS_SetChnGraphV2)
 SIMPLE_STUB0(FH_VPSS_SetDefaultScalerSize)
-SIMPLE_STUB0(FH_VPSS_SetGlbGraphV2)
 SIMPLE_STUB0(FH_VPSS_SetGraph)
 SIMPLE_STUB0(FH_VPSS_SetMask)
 SIMPLE_STUB0(FH_VPSS_SetOsd)
