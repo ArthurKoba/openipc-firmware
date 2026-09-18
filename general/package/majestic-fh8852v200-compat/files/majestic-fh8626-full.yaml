@@ -1,0 +1,87 @@
+# FH8626V100 full Majestic feature acceptance profile.
+# Manual test profile only. Default boot remains the proven media-off service.
+# No permissive compatibility stubs are enabled by majestic-fh8626-full-run.
+system:
+  webPort: 80
+  httpsPort: 443
+  logLevel: debug
+
+isp:
+  antiFlicker: disabled
+
+image:
+  mirror: false
+  flip: false
+  rotate: 0
+  contrast: 50
+  hue: 50
+  saturation: 50
+  luminance: 50
+
+video0:
+  enabled: true
+  codec: h264
+  size: 1280x720
+  fps: 25
+  bitrate: 4096
+  rcMode: vbr
+  gopSize: 25
+
+video1:
+  enabled: true
+  codec: h264
+  size: 640x360
+  fps: 25
+  bitrate: 1024
+  rcMode: vbr
+  gopSize: 25
+
+jpeg:
+  enabled: true
+  size: 640x384
+  qfactor: 50
+  fps: 1
+
+osd:
+  enabled: true
+
+audio:
+  enabled: true
+  volume: 30
+  srate: 8000
+  codec: opus
+  outputEnabled: true
+  outputVolume: 30
+
+rtsp:
+  enabled: true
+  port: 554
+
+nightMode:
+  colorToGray: true
+  irCutSingleInvert: false
+  lightMonitor: false
+  lightSensorInvert: false
+
+motionDetect:
+  enabled: true
+  visualize: false
+  debug: false
+
+records:
+  enabled: false
+
+outgoing:
+  enabled: false
+
+watchdog:
+  enabled: false
+
+hls:
+  enabled: false
+
+mdns:
+  enabled: false
+
+onvif:
+  enabled: false

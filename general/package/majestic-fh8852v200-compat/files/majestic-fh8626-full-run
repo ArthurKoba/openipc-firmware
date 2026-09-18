@@ -1,0 +1,3 @@
+#!/bin/sh
+export FH8626_MAJESTIC_CONFIG=/usr/share/majestic-fh8626/majestic-full.yaml
+exec /usr/libexec/majestic-fh8852v200/majestic-fh8626-run native-strict "$@"

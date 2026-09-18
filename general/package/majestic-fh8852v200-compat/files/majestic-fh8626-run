@@ -51,8 +51,12 @@ case "$MODE" in
 		export FH8626_MAJESTIC_STUB_OK=1
 		export FH8626_MAJESTIC_NATIVE_VENC=1
 		;;
+	native-strict)
+		unset FH8626_MAJESTIC_STUB_OK
+		export FH8626_MAJESTIC_NATIVE_VENC=1
+		;;
 	*)
-		echo "usage: $0 {strict|stub|native-video} [majestic args...]" >&2
+		echo "usage: $0 {strict|stub|native-video|native-strict} [majestic args...]" >&2
 		exit 2
 		;;
 esac
