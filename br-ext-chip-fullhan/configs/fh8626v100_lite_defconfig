@@ -50,6 +50,9 @@ BR2_PACKAGE_HAVEGED=y
 # Streamer is a direction-specific choice. The core FH8626V100 profile stays
 # neutral; Divinus and Majestic branches select their runtime explicitly.
 # BR2_PACKAGE_DIVINUS is not set
+# Experimental runtime direction: reuse the FH8852V200 Majestic userspace
+# control plane while the FH8626 media compatibility layer is developed.
+BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT=y
 BR2_PACKAGE_IPCTOOL=y
 # Wi-Fi chipset modules are device-profile choices; the generic FH8626V100
 # image does not select a particular USB adapter driver.

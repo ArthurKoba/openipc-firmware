@@ -1,0 +1,23 @@
+config BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT
+	bool "FH8626V100 Majestic FH8852V200 compatibility runtime"
+	depends on BR2_arm
+	depends on BR2_TOOLCHAIN_USES_MUSL
+	select BR2_PACKAGE_JSON_C
+	select BR2_PACKAGE_LIBEVENT_OPENIPC
+	select BR2_PACKAGE_LIBOGG_OPENIPC
+	select BR2_PACKAGE_LIBYAML
+	select BR2_PACKAGE_MBEDTLS_OPENIPC
+	select BR2_PACKAGE_OPUS_OPENIPC
+	select BR2_PACKAGE_OPUS_OPENIPC_FIXED_POINT
+	select BR2_PACKAGE_MAJESTIC_WEBUI
+	help
+	  Experimental FH8626V100 runtime using the FH8852V200 Majestic binary
+	  and the minimum FH8852V200 userspace library closure needed to load it.
+
+	  The donor libraries remain isolated under
+	  /usr/lib/majestic-fh8852v200. No FH8852 kernel modules, firmware,
+	  load scripts or sensor plug-ins are installed.
+
+	  The shipped configuration deliberately disables the media plane.
+	  HTTP/WebUI control-plane startup is hardware-proven on AJL33PQ0866;
+	  FH8626 video/ISP capture compatibility remains unfinished.
