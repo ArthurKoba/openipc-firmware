@@ -27,6 +27,7 @@
 #define FH8626_MEDIA_BIND         0xC0084D00UL
 #define FH8626_MEDIA_UNBIND_DST   0xC0044D01UL
 #define FH8626_MEDIA_UNBIND_SRC   0xC0044D02UL
+#define FH8626_MEDIA_STREAM_NB    0xC1704D05UL
 #define FH8626_MEDIA_STREAM       0xC1704D06UL
 #define FH8626_MEDIA_STREAM_KIND  4u
 #define FH8626_MEDIA_DESC_WORDS   92u
@@ -56,6 +57,30 @@
 #define FH8626_PAE_FORCE_I        0xC0045014UL
 #define FH8626_PAE_SET_RC         0xC054502FUL
 #define FH8626_PAE_GET_RC         0xC0545030UL
+
+#define FH8626_JPEG_MEM_INIT      0xC0184A00UL
+#define FH8626_JPEG_MEM_UNINIT    0xC0184A01UL
+#define FH8626_JPEG_MEM_QUERY     0xC0104A02UL
+#define FH8626_JPEG_SET_CHN_CFG   0xC0104A03UL
+#define FH8626_JPEG_GET_CHN_CFG   0xC0104A04UL
+#define FH8626_MJPEG_SET_CHN_CFG  0xC0344A05UL
+#define FH8626_MJPEG_GET_CHN_CFG  0xC0344A06UL
+#define FH8626_MJPEG_SET_RC       0xC01C4A07UL
+#define FH8626_MJPEG_GET_RC       0xC01C4A08UL
+#define FH8626_JPEG_START         0xC0044A09UL
+#define FH8626_JPEG_STOP          0xC0044A0AUL
+#define FH8626_JPEG_SET_ROTATE    0xC0084A0DUL
+#define FH8626_JPEG_GET_ROTATE    0xC0084A0EUL
+#define FH8626_JPEG_SUBMIT_FRAME  0xC0304A0FUL
+#define FH8626_JPEG_RELEASE       0xC0044A10UL
+#define FH8626_JPEG_HW_AVG_TIME   0xC0104A11UL
+#define FH8626_MJPEG_SET_DROP     0xC0244A0BUL
+#define FH8626_MJPEG_GET_DROP     0xC0244A0CUL
+
+#define FH8626_JPEG_MODE_SNAPSHOT 1u
+#define FH8626_JPEG_MODE_MJPEG    2u
+#define FH8626_JPEG_CHANNELS      9u
+#define FH8852_RAW_STREAM_SIZE    0x1A0u
 
 #define FH8626_WIDTH              1280u
 #define FH8626_HEIGHT             720u
@@ -100,6 +125,36 @@ struct pae_rc {
     uint32_t max_still_qp, additional_rate_bits, extra_qp_parameter;
 };
 
+struct jpeg_query {
+    uint32_t mode, width, height, size;
+};
+
+struct jpeg_mem {
+    uint32_t mode, phys, virt, size, width, height;
+};
+
+struct jpeg_snapshot_cfg {
+    uint32_t speed_or_mode, mode, quality_hw, rotate;
+};
+
+struct jpeg_mjpeg_cfg {
+    uint32_t word[13];
+};
+
+struct jpeg_rc {
+    uint32_t word[7];
+};
+
+struct jpeg_rotate {
+    uint32_t mode, rotate;
+};
+
+_Static_assert(sizeof(struct jpeg_query) == 0x10, "FH8626 JPEG query wire size");
+_Static_assert(sizeof(struct jpeg_mem) == 0x18, "FH8626 JPEG memory wire size");
+_Static_assert(sizeof(struct jpeg_snapshot_cfg) == 0x10, "FH8626 JPEG cfg wire size");
+_Static_assert(sizeof(struct jpeg_mjpeg_cfg) == 0x34, "FH8626 MJPEG cfg wire size");
+_Static_assert(sizeof(struct jpeg_rc) == 0x1c, "FH8626 MJPEG RC wire size");
+
 _Static_assert(sizeof(struct pae_rc) == 0x54, "FH8626 PAE RC wire size");
 
 _Static_assert(sizeof(struct mem3) == 0x0c, "FH8626 mem3 wire size");
@@ -114,6 +169,7 @@ static int isp_fd = -1;
 static int media_fd = -1;
 static int pae_fd = -1;
 static int vmm_fd = -1;
+static int jpeg_fd = -1;
 static struct mem3 vpu_sys;
 #define FH8626_VPU_CHANNELS 5u
 #define FH8626_VENC_CHANNELS 8u
@@ -130,6 +186,22 @@ static uint32_t media_bound_mask;
 static int stream_lease_held;
 static uint32_t stream_lease_channel;
 static uint32_t stream_desc[FH8626_MEDIA_DESC_WORDS];
+
+static uint32_t jpeg_mode[FH8626_JPEG_CHANNELS];
+static struct mem3 jpeg_mem_state[FH8626_JPEG_CHANNELS];
+static uint32_t jpeg_width[FH8626_JPEG_CHANNELS];
+static uint32_t jpeg_height[FH8626_JPEG_CHANNELS];
+static uint32_t jpeg_attr[FH8626_JPEG_CHANNELS][38];
+static uint32_t jpeg_rc_attr[FH8626_JPEG_CHANNELS][17];
+static uint8_t jpeg_attr_valid[FH8626_JPEG_CHANNELS];
+static uint8_t jpeg_rc_valid[FH8626_JPEG_CHANNELS];
+static uint32_t jpeg_snapshot_channel = UINT32_MAX;
+static uint32_t jpeg_mjpeg_channel = UINT32_MAX;
+
+static const uint32_t jpeg_quality_lut[10] = {
+    0x10u, 0x20u, 0x30u, 0x50u, 0x70u,
+    0x90u, 0x110u, 0x130u, 0x150u, 0x170u,
+};
 
 static int env_true(const char *name)
 {
@@ -171,6 +243,12 @@ static int open_native(void)
         (rc = open_one(&vmm_fd, "/dev/vmm_userdev")))
         return rc;
     return 0;
+}
+
+
+static int open_jpeg(void)
+{
+    return open_one(&jpeg_fd, "/dev/jpeg");
 }
 
 static void *map_phys(uint32_t phys, uint32_t size)
@@ -233,6 +311,50 @@ static void trace_words(const char *name, uint32_t chn, const void *ptr,
     fputc('\n', stderr);
 }
 
+
+/* --- generic Fullhan stream query --- */
+
+static int fh8626_raw_stream_query(void *raw, int blocking)
+{
+    uint32_t native[FH8626_MEDIA_DESC_WORDS];
+    uint32_t mask;
+    int rc;
+
+    if (!raw)
+        return -EINVAL;
+    if ((rc = open_native()))
+        return rc;
+
+    mask = ((uint32_t *)raw)[0];
+    if (!(mask & 0x0fu))
+        return -EINVAL;
+
+    memset(native, 0, sizeof(native));
+    native[0] = mask;
+    rc = call_ioctl(media_fd,
+        blocking ? FH8626_MEDIA_STREAM : FH8626_MEDIA_STREAM_NB, native);
+    if (rc)
+        return rc;
+
+    /*
+     * FH8852 raw records are 0x1a0 bytes; FH8626 records are 0x170.
+     * The leading stream mask/kind and the copied inner records keep the same
+     * semantics for the fields consumed by our VENC/JPEG public translators.
+     */
+    memset(raw, 0, FH8852_RAW_STREAM_SIZE);
+    memcpy(raw, native, sizeof(native));
+    return 0;
+}
+
+int _fh_sys_get_stream(void *raw)
+{
+    return fh8626_raw_stream_query(raw, 0);
+}
+
+int _fh_sys_get_stream_block(void *raw)
+{
+    return fh8626_raw_stream_query(raw, 1);
+}
 
 /* --- SYS --- */
 
@@ -1327,6 +1449,452 @@ SIMPLE_STUB0(FH_VENC_GetH264IntraFresh)
 SIMPLE_STUB0(FH_VENC_SetEncRefMode)
 SIMPLE_STUB0(FH_VENC_GetEncRefMode)
 
+/* --- JPEG / MJPEG --- */
+
+int _JPEG_SysInit(void)
+{
+    memset(jpeg_mode, 0, sizeof(jpeg_mode));
+    memset(jpeg_mem_state, 0, sizeof(jpeg_mem_state));
+    memset(jpeg_attr_valid, 0, sizeof(jpeg_attr_valid));
+    memset(jpeg_rc_valid, 0, sizeof(jpeg_rc_valid));
+    jpeg_snapshot_channel = UINT32_MAX;
+    jpeg_mjpeg_channel = UINT32_MAX;
+    return open_jpeg();
+}
+
+int _JPEG_QueryChnMem(void *opaque, uint32_t chn, uint32_t width,
+                      uint32_t height, uint32_t is_mjpeg, uint32_t *size)
+{
+    struct jpeg_query q = {
+        is_mjpeg ? FH8626_JPEG_MODE_MJPEG : FH8626_JPEG_MODE_SNAPSHOT,
+        width, height, 0
+    };
+    int rc;
+    (void)opaque;
+    (void)chn;
+
+    if (!size || !width || !height)
+        return -EINVAL;
+    if ((rc = open_jpeg()))
+        return rc;
+    rc = call_ioctl(jpeg_fd, FH8626_JPEG_MEM_QUERY, &q);
+    if (!rc)
+        *size = q.size;
+    return rc;
+}
+
+int _JPEG_CreateChn(void *opaque, uint32_t chn, uint32_t width,
+                    uint32_t height, uint32_t is_mjpeg,
+                    uint32_t phys, uint32_t virt, uint32_t size)
+{
+    struct jpeg_mem m;
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !width || !height ||
+        !phys || !virt || !size)
+        return -EINVAL;
+
+    mode = is_mjpeg ? FH8626_JPEG_MODE_MJPEG : FH8626_JPEG_MODE_SNAPSHOT;
+    m = (struct jpeg_mem){mode, phys, virt, size, width, height};
+    if ((rc = open_jpeg()))
+        return rc;
+    rc = call_ioctl(jpeg_fd, FH8626_JPEG_MEM_INIT, &m);
+    if (rc)
+        return rc;
+
+    jpeg_mode[chn] = mode;
+    jpeg_mem_state[chn] = (struct mem3){phys, virt, size};
+    jpeg_width[chn] = width;
+    jpeg_height[chn] = height;
+    if (mode == FH8626_JPEG_MODE_SNAPSHOT)
+        jpeg_snapshot_channel = chn;
+    else
+        jpeg_mjpeg_channel = chn;
+    return 0;
+}
+
+int _JPEG_DestroyChn(void *opaque, uint32_t chn)
+{
+    struct jpeg_mem m;
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !(mode = jpeg_mode[chn]))
+        return -EINVAL;
+    if ((rc = open_jpeg()))
+        return rc;
+
+    m = (struct jpeg_mem){mode,
+        jpeg_mem_state[chn].phys, jpeg_mem_state[chn].virt,
+        jpeg_mem_state[chn].size, 0, 0};
+    rc = call_ioctl(jpeg_fd, FH8626_JPEG_MEM_UNINIT, &m);
+    if (rc)
+        return rc;
+
+    if (jpeg_snapshot_channel == chn)
+        jpeg_snapshot_channel = UINT32_MAX;
+    if (jpeg_mjpeg_channel == chn)
+        jpeg_mjpeg_channel = UINT32_MAX;
+    jpeg_mode[chn] = 0;
+    memset(&jpeg_mem_state[chn], 0, sizeof(jpeg_mem_state[chn]));
+    jpeg_attr_valid[chn] = 0;
+    jpeg_rc_valid[chn] = 0;
+    return 0;
+}
+
+static int jpeg_public_attr_to_wire(uint32_t mode, const uint32_t *a,
+                                    void *wire)
+{
+    if (!a || !wire)
+        return -EINVAL;
+
+    if (mode == FH8626_JPEG_MODE_SNAPSHOT) {
+        struct jpeg_snapshot_cfg *cfg = wire;
+        if (a[0] != FH8626_JPEG_MODE_SNAPSHOT || a[2] > 3u || a[3] > 9u)
+            return -EINVAL;
+        cfg->speed_or_mode = a[1];
+        cfg->mode = FH8626_JPEG_MODE_SNAPSHOT;
+        cfg->quality_hw = jpeg_quality_lut[a[3]];
+        cfg->rotate = a[2];
+        return 0;
+    }
+
+    if (mode == FH8626_JPEG_MODE_MJPEG) {
+        struct jpeg_mjpeg_cfg *cfg = wire;
+        uint32_t rc_mode;
+
+        if (a[0] != FH8626_JPEG_MODE_MJPEG || a[3] > 3u || a[4] > 9u)
+            return -EINVAL;
+        memset(cfg, 0, sizeof(*cfg));
+        cfg->word[0] = FH8626_JPEG_MODE_MJPEG;
+        cfg->word[1] = a[1];
+        cfg->word[2] = a[2];
+        cfg->word[10] = 1;
+        cfg->word[11] = jpeg_quality_lut[a[4]];
+        cfg->word[12] = a[3];
+
+        rc_mode = a[21];
+        switch (rc_mode) {
+        case 0:
+            cfg->word[3] = a[23] & 0xffffu;
+            cfg->word[4] = a[23] >> 16;
+            cfg->word[5] = 0;
+            cfg->word[6] = a[22];
+            cfg->word[7] = 0;
+            cfg->word[8] = a[22];
+            cfg->word[9] = a[22];
+            break;
+        case 1:
+            cfg->word[3] = a[24] & 0xffffu;
+            cfg->word[4] = a[24] >> 16;
+            cfg->word[5] = 1;
+            cfg->word[6] = a[22];
+            cfg->word[7] = a[23];
+            cfg->word[8] = 0;
+            cfg->word[9] = 98;
+            break;
+        case 2:
+            cfg->word[3] = a[26] & 0xffffu;
+            cfg->word[4] = a[26] >> 16;
+            cfg->word[5] = 1;
+            cfg->word[6] = a[22];
+            cfg->word[7] = a[23];
+            cfg->word[8] = a[24];
+            cfg->word[9] = a[25];
+            break;
+        default:
+            return -ENOTSUP;
+        }
+        if (!cfg->word[3] || !cfg->word[4])
+            return -EINVAL;
+        return 0;
+    }
+
+    return -ENOTSUP;
+}
+
+int _JPEG_SetChnAttr(void *opaque, uint32_t chn, const uint32_t *attr)
+{
+    union {
+        struct jpeg_snapshot_cfg jpg;
+        struct jpeg_mjpeg_cfg mjpg;
+    } wire;
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !attr || !(mode = jpeg_mode[chn]))
+        return -EINVAL;
+    memset(&wire, 0, sizeof(wire));
+    if ((rc = jpeg_public_attr_to_wire(mode, attr, &wire)))
+        return rc;
+    if ((rc = open_jpeg()))
+        return rc;
+
+    rc = call_ioctl(jpeg_fd,
+        mode == FH8626_JPEG_MODE_SNAPSHOT ?
+            FH8626_JPEG_SET_CHN_CFG : FH8626_MJPEG_SET_CHN_CFG,
+        &wire);
+    if (rc)
+        return rc;
+    memcpy(jpeg_attr[chn], attr, sizeof(jpeg_attr[chn]));
+    jpeg_attr_valid[chn] = 1;
+    return 0;
+}
+
+int _JPEG_GetChnAttr(void *opaque, uint32_t chn, uint32_t *attr)
+{
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !attr || !(mode = jpeg_mode[chn]))
+        return -EINVAL;
+    if (!jpeg_attr_valid[chn])
+        return -EAGAIN;
+    if ((rc = open_jpeg()))
+        return rc;
+
+    memcpy(attr, jpeg_attr[chn], sizeof(jpeg_attr[chn]));
+    if (mode == FH8626_JPEG_MODE_SNAPSHOT) {
+        struct jpeg_snapshot_cfg cfg = {0};
+        rc = call_ioctl(jpeg_fd, FH8626_JPEG_GET_CHN_CFG, &cfg);
+        if (rc)
+            return rc;
+        attr[0] = mode;
+        attr[1] = cfg.speed_or_mode;
+        attr[2] = cfg.rotate;
+    } else {
+        struct jpeg_mjpeg_cfg cfg;
+        memset(&cfg, 0, sizeof(cfg));
+        rc = call_ioctl(jpeg_fd, FH8626_MJPEG_GET_CHN_CFG, &cfg);
+        if (rc)
+            return rc;
+        attr[0] = mode;
+        attr[1] = cfg.word[1];
+        attr[2] = cfg.word[2];
+        attr[3] = cfg.word[12];
+    }
+    return 0;
+}
+
+static int jpeg_public_rc_to_wire(const uint32_t *a, struct jpeg_rc *r)
+{
+    if (!a || !r)
+        return -EINVAL;
+    memset(r, 0, sizeof(*r));
+
+    switch (a[0]) {
+    case 0:
+        r->word[0] = a[2] & 0xffffu;
+        r->word[1] = a[2] >> 16;
+        r->word[2] = 0;
+        r->word[3] = a[1];
+        r->word[4] = 0;
+        r->word[5] = a[1];
+        r->word[6] = a[1];
+        break;
+    case 1:
+        r->word[0] = a[3] & 0xffffu;
+        r->word[1] = a[3] >> 16;
+        r->word[2] = 1;
+        r->word[3] = a[1];
+        r->word[4] = a[2];
+        r->word[5] = 0;
+        r->word[6] = 98;
+        break;
+    case 2:
+        r->word[0] = a[5] & 0xffffu;
+        r->word[1] = a[5] >> 16;
+        r->word[2] = 1;
+        r->word[3] = a[1];
+        r->word[4] = a[2];
+        r->word[5] = a[3];
+        r->word[6] = a[4];
+        break;
+    default:
+        return -ENOTSUP;
+    }
+    if (!r->word[0] || !r->word[1])
+        return -EINVAL;
+    return 0;
+}
+
+static int jpeg_wire_rc_to_public(const struct jpeg_rc *r, uint32_t mode,
+                                  uint32_t *a)
+{
+    if (!r || !a || mode > 2u)
+        return -EINVAL;
+    memset(a, 0, 17u * sizeof(*a));
+    a[0] = mode;
+    switch (mode) {
+    case 0:
+        a[1] = r->word[3];
+        a[2] = (r->word[0] & 0xffffu) | (r->word[1] << 16);
+        break;
+    case 1:
+        a[1] = r->word[3];
+        a[2] = r->word[4];
+        a[3] = (r->word[0] & 0xffffu) | (r->word[1] << 16);
+        break;
+    case 2:
+        a[1] = r->word[3];
+        a[2] = r->word[4];
+        a[3] = r->word[5];
+        a[4] = r->word[6];
+        a[5] = (r->word[0] & 0xffffu) | (r->word[1] << 16);
+        break;
+    }
+    return 0;
+}
+
+int _JPEG_SetRCAttr(void *opaque, uint32_t chn, const uint32_t *attr)
+{
+    struct jpeg_rc wire;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !attr ||
+        jpeg_mode[chn] != FH8626_JPEG_MODE_MJPEG)
+        return -EINVAL;
+    if ((rc = jpeg_public_rc_to_wire(attr, &wire)))
+        return rc;
+    if ((rc = open_jpeg()))
+        return rc;
+    rc = call_ioctl(jpeg_fd, FH8626_MJPEG_SET_RC, &wire);
+    if (rc)
+        return rc;
+    memcpy(jpeg_rc_attr[chn], attr, sizeof(jpeg_rc_attr[chn]));
+    jpeg_rc_valid[chn] = 1;
+    return 0;
+}
+
+int _JPEG_GetRCAttr(void *opaque, uint32_t chn, uint32_t *attr)
+{
+    struct jpeg_rc wire;
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !attr ||
+        jpeg_mode[chn] != FH8626_JPEG_MODE_MJPEG)
+        return -EINVAL;
+    if (!jpeg_rc_valid[chn])
+        return -EAGAIN;
+    mode = jpeg_rc_attr[chn][0];
+    if ((rc = open_jpeg()))
+        return rc;
+    memset(&wire, 0, sizeof(wire));
+    rc = call_ioctl(jpeg_fd, FH8626_MJPEG_GET_RC, &wire);
+    if (rc)
+        return rc;
+    return jpeg_wire_rc_to_public(&wire, mode, attr);
+}
+
+int _JPEG_Start(void *opaque, uint32_t chn)
+{
+    int rc;
+    (void)opaque;
+    if (chn >= FH8626_JPEG_CHANNELS ||
+        jpeg_mode[chn] != FH8626_JPEG_MODE_MJPEG)
+        return -EINVAL;
+    if ((rc = open_jpeg()))
+        return rc;
+    return call_ioctl(jpeg_fd, FH8626_JPEG_START, NULL);
+}
+
+int _JPEG_Stop(void *opaque, uint32_t chn)
+{
+    int rc;
+    (void)opaque;
+    if (chn >= FH8626_JPEG_CHANNELS ||
+        jpeg_mode[chn] != FH8626_JPEG_MODE_MJPEG)
+        return -EINVAL;
+    if ((rc = open_jpeg()))
+        return rc;
+    return call_ioctl(jpeg_fd, FH8626_JPEG_STOP, NULL);
+}
+
+int _JPEG_SetRotate(void *opaque, uint32_t chn, uint32_t rotate)
+{
+    struct jpeg_rotate r;
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || rotate > 3u ||
+        !(mode = jpeg_mode[chn]))
+        return -EINVAL;
+    r = (struct jpeg_rotate){mode, rotate};
+    if ((rc = open_jpeg()))
+        return rc;
+    rc = call_ioctl(jpeg_fd, FH8626_JPEG_SET_ROTATE, &r);
+    if (!rc && jpeg_attr_valid[chn])
+        jpeg_attr[chn][mode == FH8626_JPEG_MODE_SNAPSHOT ? 2 : 3] = rotate;
+    return rc;
+}
+
+int _JPEG_GetRotate(void *opaque, uint32_t chn, uint32_t *rotate)
+{
+    struct jpeg_rotate r;
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !rotate ||
+        !(mode = jpeg_mode[chn]))
+        return -EINVAL;
+    r = (struct jpeg_rotate){mode, 0};
+    if ((rc = open_jpeg()))
+        return rc;
+    rc = call_ioctl(jpeg_fd, FH8626_JPEG_GET_ROTATE, &r);
+    if (!rc)
+        *rotate = r.rotate;
+    return rc;
+}
+
+int _JPEG_HandleStream(const uint32_t *raw, uint32_t *out)
+{
+    uint32_t mode, chn;
+
+    if (!raw || !out)
+        return -EINVAL;
+    mode = raw[1];
+    if (mode == FH8626_JPEG_MODE_SNAPSHOT)
+        chn = jpeg_snapshot_channel;
+    else if (mode == FH8626_JPEG_MODE_MJPEG)
+        chn = jpeg_mjpeg_channel;
+    else
+        return -ENOTSUP;
+    if (chn == UINT32_MAX)
+        return -EPIPE;
+
+    out[0] = mode;
+    out[1] = chn;
+    out[2] = raw[6];
+    out[3] = raw[7];
+    out[4] = raw[8];
+    out[5] = raw[9];
+    out[6] = raw[10];
+    return 0;
+}
+
+int _JPEG_ReleaseStream(void *opaque, uint32_t chn)
+{
+    uint32_t mode;
+    int rc;
+    (void)opaque;
+
+    if (chn >= FH8626_JPEG_CHANNELS || !(mode = jpeg_mode[chn]))
+        return -EINVAL;
+    if ((rc = open_jpeg()))
+        return rc;
+    return call_ioctl(jpeg_fd, FH8626_JPEG_RELEASE, &mode);
+}
+
 /* Loader-complete optional FH8852 DSP/JPEG surface. */
 SIMPLE_STUB0(FH_SYS_GetChipID)
 SIMPLE_STUB0(FH_SYS_GetReg)
@@ -1399,22 +1967,8 @@ SIMPLE_STUB0(FH_VPSS_SetRGBPreAttr)
 SIMPLE_STUB0(FH_VPSS_SetYCmeanMode)
 SIMPLE_STUB0(FH_VPSS_UnlockChnFrameAdv)
 SIMPLE_STUB0(FH_VPSS_WriteMallocedMem)
-SIMPLE_STUB0(_JPEG_CreateChn)
-SIMPLE_STUB0(_JPEG_DestroyChn)
-SIMPLE_STUB0(_JPEG_GetChnAttr)
 SIMPLE_STUB0(_JPEG_GetDropAttr)
 SIMPLE_STUB0(_JPEG_GetHwAvgTime)
-SIMPLE_STUB0(_JPEG_GetRCAttr)
-SIMPLE_STUB0(_JPEG_GetRotate)
-SIMPLE_STUB0(_JPEG_HandleStream)
-SIMPLE_STUB0(_JPEG_QueryChnMem)
-SIMPLE_STUB0(_JPEG_ReleaseStream)
-SIMPLE_STUB0(_JPEG_SetChnAttr)
 SIMPLE_STUB0(_JPEG_SetDropAttr)
-SIMPLE_STUB0(_JPEG_SetRCAttr)
-SIMPLE_STUB0(_JPEG_SetRotate)
-SIMPLE_STUB0(_JPEG_Start)
-SIMPLE_STUB0(_JPEG_Stop)
 SIMPLE_STUB0(_JPEG_SubmitFrame)
 SIMPLE_STUB0(_JPEG_SubmitFrameEx)
-SIMPLE_STUB0(_JPEG_SysInit)
