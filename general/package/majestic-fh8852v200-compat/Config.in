@@ -22,6 +22,12 @@ config BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT
 	  library loading, expected Fullhan API symbols and native FH8626 media
 	  device-node availability without entering SDK/media initialization.
 
+	  A separate bring-up runner installs a source-built FH8852-shaped
+	  GC1054 sensor facade. The facade translates the recovered FH8852
+	  0x7c-byte sensor callback ABI onto the recovered FH8626 0x68-byte
+	  callback ABI and localizes unresolved controls as staging stubs.
+	  It is never selected by the default media-off service.
+
 	  The shipped configuration deliberately disables the media plane.
 	  HTTP/WebUI control-plane startup is hardware-proven on AJL33PQ0866;
 	  FH8626 video/ISP capture compatibility remains unfinished.
