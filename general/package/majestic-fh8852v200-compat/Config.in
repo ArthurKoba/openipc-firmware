@@ -18,6 +18,10 @@ config BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT
 	  /usr/lib/majestic-fh8852v200. No FH8852 kernel modules, firmware,
 	  load scripts or sensor plug-ins are installed.
 
+	  The package also builds a non-mutating ABI probe that verifies donor
+	  library loading, expected Fullhan API symbols and native FH8626 media
+	  device-node availability without entering SDK/media initialization.
+
 	  The shipped configuration deliberately disables the media plane.
 	  HTTP/WebUI control-plane startup is hardware-proven on AJL33PQ0866;
 	  FH8626 video/ISP capture compatibility remains unfinished.
