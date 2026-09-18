@@ -14,7 +14,7 @@ struct symbol {
     int required;
 };
 
-static const struct library libraries[] = {
+static const struct library donor_libraries[] = {
     { "/usr/lib/majestic-fh8852v200/libvmm.so" },
     { "/usr/lib/majestic-fh8852v200/libdsp.so" },
     { "/usr/lib/majestic-fh8852v200/libmipi.so" },
@@ -104,12 +104,27 @@ static int probe_devices(void)
     return missing;
 }
 
-static int load_libraries(void **handles)
+static const struct library compatibility_libraries[] = {
+    { "/usr/lib/majestic-fh8626/libvmm.so" },
+    { "/usr/lib/majestic-fh8626/libdsp.so" },
+    { "/usr/lib/majestic-fh8626/libmipi.so" },
+    { "/usr/lib/majestic-fh8626/libacw_mpi.so" },
+    { "/usr/lib/majestic-fh8626/libgc1054_fh8626_native.so" },
+    { "/usr/lib/majestic-fh8626/libgc1054_mipi.so" },
+    { "/usr/lib/majestic-fh8852v200/libispcore.so" },
+    { "/usr/lib/majestic-fh8852v200/libisp.so" },
+    { "/usr/lib/majestic-fh8852v200/libadvapi.so" },
+    { "/usr/lib/majestic-fh8852v200/libadvapi_isp.so" },
+    { "/usr/lib/majestic-fh8852v200/libadvapi_smartir.so" },
+};
+
+static int load_set(const char *title, const struct library *libraries,
+                    size_t count, void **handles)
 {
     size_t i;
 
-    puts("donor-libraries:");
-    for (i = 0; i < sizeof(libraries) / sizeof(libraries[0]); ++i) {
+    puts(title);
+    for (i = 0; i < count; ++i) {
         handles[i] = dlopen(libraries[i].path, RTLD_NOW | RTLD_GLOBAL);
         if (!handles[i]) {
             printf("  %-52s FAIL: %s\n", libraries[i].path, dlerror());
@@ -118,6 +133,15 @@ static int load_libraries(void **handles)
         printf("  %-52s loaded\n", libraries[i].path);
     }
     return 0;
+}
+
+static void close_set(void **handles, size_t count)
+{
+    size_t i;
+    for (i = count; i > 0; --i) {
+        if (handles[i - 1])
+            dlclose(handles[i - 1]);
+    }
 }
 
 static int probe_symbols(void)
@@ -146,30 +170,54 @@ static int probe_symbols(void)
 
 int main(void)
 {
-    void *handles[sizeof(libraries) / sizeof(libraries[0])] = {0};
+    enum {
+        DONOR_COUNT = sizeof(donor_libraries) / sizeof(donor_libraries[0]),
+        COMPAT_COUNT = sizeof(compatibility_libraries) /
+                       sizeof(compatibility_libraries[0])
+    };
+    void *donor_handles[DONOR_COUNT];
+    void *compat_handles[COMPAT_COUNT];
     int devices_missing;
-    int symbols_missing;
-    size_t i;
+    int donor_symbols_missing;
+    int compat_symbols_missing;
+
+    memset(donor_handles, 0, sizeof(donor_handles));
+    memset(compat_handles, 0, sizeof(compat_handles));
 
     puts("FH8626V100 Majestic compatibility ABI probe");
     devices_missing = probe_devices();
 
-    if (load_libraries(handles)) {
+    if (load_set("donor-baseline-libraries:", donor_libraries,
+                 DONOR_COUNT, donor_handles)) {
+        close_set(donor_handles, DONOR_COUNT);
         fprintf(stderr, "probe result: donor dependency closure is not loadable\n");
         return 2;
     }
-
-    symbols_missing = probe_symbols();
-
-    for (i = sizeof(handles) / sizeof(handles[0]); i > 0; --i)
-        dlclose(handles[i - 1]);
-
-    printf("probe result: devices_missing=%d required_symbols_missing=%d\n",
-           devices_missing, symbols_missing);
+    donor_symbols_missing = probe_symbols();
+    close_set(donor_handles, DONOR_COUNT);
 
     /*
-     * Device-node absence is reported as evidence but is not a static ABI
-     * failure. This lets the same probe run in a control-plane-only image.
+     * Re-open the runtime exactly in source-first order used by the explicit
+     * FH8626 media runners. This catches unresolved symbols in our adapters
+     * before Majestic enters sensor/ISP/media initialization.
      */
-    return symbols_missing ? 3 : 0;
+    if (load_set("fh8626-source-compatibility-libraries:",
+                 compatibility_libraries, COMPAT_COUNT, compat_handles)) {
+        close_set(compat_handles, COMPAT_COUNT);
+        fprintf(stderr,
+                "probe result: FH8626 source compatibility closure is not loadable\n");
+        return 4;
+    }
+    compat_symbols_missing = probe_symbols();
+    close_set(compat_handles, COMPAT_COUNT);
+
+    printf("probe result: devices_missing=%d donor_required_symbols_missing=%d "
+           "compat_required_symbols_missing=%d\n",
+           devices_missing, donor_symbols_missing, compat_symbols_missing);
+
+    /*
+     * Device-node absence is evidence, not a static ABI failure. Required
+     * symbol loss in either closure is a source/runtime packaging failure.
+     */
+    return (donor_symbols_missing || compat_symbols_missing) ? 3 : 0;
 }
