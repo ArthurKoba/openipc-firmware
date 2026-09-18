@@ -44,6 +44,13 @@
 #define FH8626_VPU_CLOSE_CHN      0xC0046950UL
 #define FH8626_VPU_SET_FRAMECTRL  0xC0086954UL
 #define FH8626_VPU_GET_FRAMECTRL  0xC0086955UL
+#define FH8626_VPU_GET_MEAN       0xC01C6959UL
+#define FH8626_VPU_GET_CPY        0xC0206961UL
+#define FH8626_VPU_YCMEAN_OPEN    0xC0046964UL
+#define FH8626_VPU_YCMEAN_CLOSE   0xC0046965UL
+#define FH8626_VPU_SET_YCMEANMODE 0xC004696CUL
+#define FH8626_VPU_GET_VI_ATTR    0xC00C6947UL
+#define FH8626_VPU_GET_CHN_CFG    0xC00C6949UL
 
 #define FH8626_PAE_SYS_QUERY      0xC0045002UL
 #define FH8626_PAE_SYS_INIT       0xC00C5000UL
@@ -462,10 +469,23 @@ int FH_VPSS_SetViAttr(void *attr)
     return call_ioctl(isp_fd, FH8626_VPU_SET_VI_ATTR, attr);
 }
 
-int FH_VPSS_GetViAttr(void *attr)
+int FH_VPSS_GetViAttr(uint32_t out[2])
 {
-    (void)attr;
-    return strict_stub("FH_VPSS_GetViAttr");
+    uint32_t wire[3] = {0, 0, 0};
+    int rc;
+
+    if (!out)
+        return -EINVAL;
+    if ((rc = open_native()))
+        return rc;
+    rc = call_ioctl(isp_fd, FH8626_VPU_GET_VI_ATTR, wire);
+    if (rc)
+        return rc;
+
+    /* FH8852 public wrapper exposes only the first two native VI words. */
+    out[0] = wire[0];
+    out[1] = wire[1];
+    return 0;
 }
 
 int FH_VPSS_QueryChnMem(uint32_t chn, uint32_t width, uint32_t height,
@@ -615,6 +635,93 @@ int FH_VPSS_GetFramectrl(uint32_t chn, uint16_t pair[2])
 
 int FH_VPSS_FreezeVideo(void) { return 0; }
 int FH_VPSS_UnfreezeVideo(void) { return 0; }
+
+
+int FH_VPSS_EnableYCmean(void)
+{
+    int rc;
+    if ((rc = open_native()))
+        return rc;
+    return call_ioctl(isp_fd, FH8626_VPU_YCMEAN_OPEN, NULL);
+}
+
+int FH_VPSS_DisableYCmean(void)
+{
+    int rc;
+    if ((rc = open_native()))
+        return rc;
+    return call_ioctl(isp_fd, FH8626_VPU_YCMEAN_CLOSE, NULL);
+}
+
+int FH_VPSS_SetYCmeanMode(uint32_t mode)
+{
+    int rc;
+    if ((rc = open_native()))
+        return rc;
+    return call_ioctl(isp_fd, FH8626_VPU_SET_YCMEANMODE, &mode);
+}
+
+int FH_VPSS_GetYCmean(uint32_t out[5])
+{
+    uint32_t wire[7] = {0};
+    int rc;
+
+    if (!out)
+        return -EINVAL;
+    if ((rc = open_native()))
+        return rc;
+    rc = call_ioctl(isp_fd, FH8626_VPU_GET_MEAN, wire);
+    if (rc)
+        return rc;
+
+    /*
+     * Exact FH8852 public wrapper projection from the native 0x1c record:
+     * pub[0] <- wire[6]
+     * pub[1] <- wire[1]
+     * pub[2] <- wire[2]
+     * pub[3] <- wire[4]
+     * pub[4] <- wire[5]
+     */
+    out[0] = wire[6];
+    out[1] = wire[1];
+    out[2] = wire[2];
+    out[3] = wire[4];
+    out[4] = wire[5];
+    return 0;
+}
+
+int FH_VPSS_GetCPYData(uint32_t out[8])
+{
+    uint32_t wire[8] = {0};
+    int rc;
+
+    if (!out)
+        return -EINVAL;
+    if ((rc = open_native()))
+        return rc;
+    rc = call_ioctl(isp_fd, FH8626_VPU_GET_CPY, wire);
+    if (rc)
+        return rc;
+    memcpy(out, wire, sizeof(wire));
+    return 0;
+}
+
+int FH_VPSS_GetChnAttr(uint32_t chn, uint32_t out[2])
+{
+    uint32_t wire[3] = {chn, 0, 0};
+    int rc;
+
+    if (chn >= FH8626_VPU_CHANNELS || !out)
+        return -EINVAL;
+    if ((rc = open_native()))
+        return rc;
+    rc = call_ioctl(isp_fd, FH8626_VPU_GET_CHN_CFG, wire);
+    if (rc)
+        return rc;
+    out[0] = wire[1];
+    out[1] = wire[2];
+    return 0;
+}
 
 /* --- VENC / PAE --- */
 
@@ -2058,15 +2165,11 @@ SIMPLE_STUB0(FH_VENC_Submit_ENC)
 SIMPLE_STUB0(FH_VENC_Submit_ENC_Ex)
 SIMPLE_STUB0(FH_VPSS_ClearMask)
 SIMPLE_STUB0(FH_VPSS_CloseOsdtext)
-SIMPLE_STUB0(FH_VPSS_DisableYCmean)
-SIMPLE_STUB0(FH_VPSS_EnableYCmean)
 SIMPLE_STUB0(FH_VPSS_ExportMallocedMem)
 SIMPLE_STUB0(FH_VPSS_FrameBufferRegister)
 SIMPLE_STUB0(FH_VPSS_FrameBufferUnRegister)
 SIMPLE_STUB0(FH_VPSS_GetBGMData)
-SIMPLE_STUB0(FH_VPSS_GetCPYData)
 SIMPLE_STUB0(FH_VPSS_GetChnApcAttr)
-SIMPLE_STUB0(FH_VPSS_GetChnAttr)
 SIMPLE_STUB0(FH_VPSS_GetChnCapality)
 SIMPLE_STUB0(FH_VPSS_GetChnFrame)
 SIMPLE_STUB0(FH_VPSS_GetChnFrameAdv)
@@ -2085,7 +2188,6 @@ SIMPLE_STUB0(FH_VPSS_GetOsdHighlight)
 SIMPLE_STUB0(FH_VPSS_GetOsdInvert)
 SIMPLE_STUB0(FH_VPSS_GetRGBPreAttr)
 SIMPLE_STUB0(FH_VPSS_GetUserPicAddr)
-SIMPLE_STUB0(FH_VPSS_GetYCmean)
 SIMPLE_STUB0(FH_VPSS_GetYCmeanMode)
 SIMPLE_STUB0(FH_VPSS_ImportMallocedMem)
 SIMPLE_STUB0(FH_VPSS_LOW_LATENCY_Disable)
@@ -2107,6 +2209,5 @@ SIMPLE_STUB0(FH_VPSS_SetOsdAddr)
 SIMPLE_STUB0(FH_VPSS_SetOsdHighlight)
 SIMPLE_STUB0(FH_VPSS_SetOsdInvert)
 SIMPLE_STUB0(FH_VPSS_SetRGBPreAttr)
-SIMPLE_STUB0(FH_VPSS_SetYCmeanMode)
 SIMPLE_STUB0(FH_VPSS_UnlockChnFrameAdv)
 SIMPLE_STUB0(FH_VPSS_WriteMallocedMem)
