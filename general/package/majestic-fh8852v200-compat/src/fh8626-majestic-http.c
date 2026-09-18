@@ -211,6 +211,7 @@ int main(void)
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGCHLD, SIG_IGN);
 
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return 1;
@@ -227,11 +228,24 @@ int main(void)
 
     while (running) {
         int c = accept(fd, NULL, NULL);
+        pid_t child;
+
         if (c < 0) {
             if (errno == EINTR) continue;
             break;
         }
-        handle_client(c);
+
+        child = fork();
+        if (child < 0) {
+            close(c);
+            continue;
+        }
+        if (child == 0) {
+            close(fd);
+            handle_client(c);
+            close(c);
+            _exit(0);
+        }
         close(c);
     }
     close(fd);
