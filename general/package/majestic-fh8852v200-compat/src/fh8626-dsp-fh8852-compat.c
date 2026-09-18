@@ -225,8 +225,15 @@ static int env_true(const char *name)
 static int strict_stub(const char *name)
 {
     if (env_true("FH8626_MAJESTIC_TRACE"))
-        fprintf(stderr, "fh8626-dsp-compat: stub %s\n", name);
+        fprintf(stderr, "fh8626-dsp-compat: discovery boundary %s\n", name);
     return env_true("FH8626_MAJESTIC_STUB_OK") ? 0 : -ENOSYS;
+}
+
+static int unsupported_feature(const char *name)
+{
+    if (env_true("FH8626_MAJESTIC_TRACE"))
+        fprintf(stderr, "fh8626-dsp-compat: unsupported/unreachable SDK API %s\n", name);
+    return -ENOTSUP;
 }
 
 static int call_ioctl(int fd, unsigned long request, void *arg)
@@ -427,9 +434,9 @@ int FH_SYS_UnBindbyDst(uint32_t destination)
         return rc;
     return call_ioctl(media_fd, FH8626_MEDIA_UNBIND_DST, &destination);
 }
-int FH_SYS_BindVpu2Bgm(void) { return strict_stub("FH_SYS_BindVpu2Bgm"); }
-int FH_SYS_BindVpu2Nn(void) { return strict_stub("FH_SYS_BindVpu2Nn"); }
-int FH_SYS_Set_Resource(void *p) { (void)p; return strict_stub("FH_SYS_Set_Resource"); }
+int FH_SYS_BindVpu2Bgm(void) { return unsupported_feature("FH_SYS_BindVpu2Bgm"); }
+int FH_SYS_BindVpu2Nn(void) { return unsupported_feature("FH_SYS_BindVpu2Nn"); }
+int FH_SYS_Set_Resource(void *p) { (void)p; return unsupported_feature("FH_SYS_Set_Resource"); }
 int FH_SYS_GetBindbyDest(void *p) { (void)p; return -ENOENT; }
 
 /* --- VPSS / VPU --- */
@@ -1635,7 +1642,7 @@ int FH_VENC_GetRCAttr(uint32_t chn, void *attr)
 }
 
 /* Loader/dlsym compatibility for common optional controls. */
-#define SIMPLE_STUB0(name) int name(void) { return strict_stub(#name); }
+#define SIMPLE_STUB0(name) int name(void) { return unsupported_feature(#name); }
 SIMPLE_STUB0(FH_VENC_ClearRoi)
 SIMPLE_STUB0(FH_VENC_ClearYuvQueue)
 SIMPLE_STUB0(FH_VENC_SetRotate)
