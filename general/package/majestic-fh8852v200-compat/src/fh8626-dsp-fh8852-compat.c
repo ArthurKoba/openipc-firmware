@@ -593,23 +593,163 @@ int FH_VENC_CreateChn(uint32_t chn, const void *attr)
     return rc;
 }
 
-static int native_venc_fixed_720p(uint32_t chn)
+static int h264_translate_attr(uint32_t chn, const uint32_t *a,
+                               struct pae_cfg *cfg, struct pae_rc *rate)
 {
-    struct pae_mem_query q = {chn, 0, FH8626_WIDTH, FH8626_HEIGHT, 0};
+    uint32_t public_rc_mode;
+
+    if (!a || !cfg || !rate)
+        return -EINVAL;
+    if (a[0] != 4u && a[0] != 8u)
+        return -ENOTSUP;
+    if (a[1] != 0x42u && a[1] != 0x4du)
+        return -EINVAL;
+    if (a[3] < 32u || a[3] > venc_capacity_width ||
+        a[4] < 32u || a[4] > venc_capacity_height)
+        return -ERANGE;
+
+    memset(cfg, 0, sizeof(*cfg));
+    memset(rate, 0, sizeof(*rate));
+
+    /*
+     * Canonical Apollo public H.264 attr -> PAE 0x2c wire:
+     * public[0]  encode type (4 normal, 8 smart)
+     * public[1]  H.264 profile (0x42 Baseline, 0x4d Main)
+     * public[2]  GOP/key interval
+     * public[3]  visible width
+     * public[4]  visible height
+     * public[5..8] smart-H.264 extras
+     * public[21] RC mode selector
+     *
+     * The stock translator at Apollo 0x00211d9c constructs the same 11-word
+     * PAE config and then immediately constructs the native 0x54 RC record.
+     */
+    cfg->chn = chn;
+    cfg->width = a[3];
+    cfg->height = a[4];
+    cfg->field0c = a[2];
+    cfg->profile = a[1];
+
+    public_rc_mode = a[21];
+    rate->chn = chn;
+
+    switch (public_rc_mode) {
+    case 3u: /* stock FH_RC_H264_VBR -> native mode 0 */
+        rate->rc_mode = 0;
+        rate->frame_rate_packed = a[28];
+        rate->init_qp = a[22];
+        rate->bitrate_or_rate = a[23];
+        rate->i_min_qp = a[24];
+        rate->i_max_qp = a[25];
+        rate->p_min_qp = a[26];
+        rate->p_max_qp = a[27];
+        rate->i_proportion = a[32];
+        rate->p_proportion = a[33];
+        rate->fluctuate_level = a[34];
+        rate->ip_qp_delta = (int32_t)a[31];
+        rate->i_target_limit_bits = a[30];
+        rate->max_rate_percent = a[29];
+        break;
+    case 4u: /* stock FH_RC_H264_CBR -> native mode 1 */
+        rate->rc_mode = 1;
+        rate->frame_rate_packed = a[24];
+        rate->init_qp = a[22];
+        rate->bitrate_or_rate = a[23];
+        rate->i_min_qp = 10;
+        rate->i_max_qp = 50;
+        rate->p_min_qp = 10;
+        rate->p_max_qp = 50;
+        rate->i_proportion = a[28];
+        rate->p_proportion = a[29];
+        rate->fluctuate_level = a[30];
+        rate->ip_qp_delta = (int32_t)a[27];
+        rate->i_target_limit_bits = a[26];
+        rate->max_rate_percent = a[25];
+        break;
+    case 5u: /* fixed-QP style public mode -> native mode 2 */
+        rate->rc_mode = 2;
+        rate->frame_rate_packed = a[24];
+        rate->mode2_qp_a = a[22];
+        rate->mode2_qp_b = a[23];
+        rate->i_min_qp = a[22];
+        rate->i_max_qp = a[22];
+        rate->p_min_qp = a[23];
+        rate->p_max_qp = a[23];
+        break;
+    case 6u: /* stock FH_RC_H264_AVBR -> native mode 4 */
+        rate->rc_mode = 4;
+        rate->frame_rate_packed = a[28];
+        rate->init_qp = a[22];
+        rate->bitrate_or_rate = a[23];
+        rate->i_min_qp = a[24];
+        rate->i_max_qp = a[25];
+        rate->p_min_qp = a[26];
+        rate->p_max_qp = a[27];
+        rate->i_proportion = a[32];
+        rate->p_proportion = a[33];
+        rate->fluctuate_level = a[34];
+        rate->ip_qp_delta = (int32_t)a[31];
+        rate->i_target_limit_bits = a[30];
+        rate->max_rate_percent = a[29];
+        rate->still_rate_percent = a[35];
+        rate->max_still_qp = a[36];
+        break;
+    case 0xbu: /* stock FH_RC_H264_CVBR -> native mode 5 */
+        rate->rc_mode = 5;
+        rate->frame_rate_packed = a[30];
+        rate->init_qp = a[22];
+        rate->bitrate_or_rate = a[24];
+        rate->i_min_qp = a[26];
+        rate->i_max_qp = a[27];
+        rate->p_min_qp = a[28];
+        rate->p_max_qp = a[29];
+        rate->i_proportion = a[33];
+        rate->p_proportion = a[34];
+        rate->fluctuate_level = a[35];
+        rate->ip_qp_delta = (int32_t)a[32];
+        rate->i_target_limit_bits = a[31];
+        rate->max_rate_percent = a[25];
+        rate->still_rate_percent = 30;
+        rate->max_still_qp = 34;
+        rate->additional_rate_bits = a[23];
+        rate->extra_qp_parameter = a[36];
+        break;
+    default:
+        return -ENOTSUP;
+    }
+
+    if (!(rate->frame_rate_packed & 0xffffu) ||
+        !(rate->frame_rate_packed >> 16) ||
+        rate->init_qp > 51u)
+        return -EINVAL;
+
+    if (a[0] == 8u) {
+        cfg->field20 = a[5];
+        cfg->field24 = a[6];
+        cfg->field28 = a[7];
+        cfg->mode = a[8];
+    }
+    return 0;
+}
+
+static int native_venc_from_public_attr(uint32_t chn, const uint32_t *attr)
+{
+    struct pae_mem_query q;
     struct pae_mem mem;
     struct pae_cfg cfg;
+    struct pae_rc rate;
     int rc;
 
     if (chn != 0)
         return -ENOTSUP;
-    if (!(venc_support_type & 4u) ||
-        venc_capacity_width < FH8626_WIDTH ||
-        venc_capacity_height < FH8626_HEIGHT)
-        return -EPIPE;
+    if ((rc = h264_translate_attr(chn, attr, &cfg, &rate)))
+        return rc;
     if ((rc = open_native()))
         return rc;
     if ((rc = FH_VENC_SysInitMem()))
         return rc;
+
+    q = (struct pae_mem_query){chn, 0, cfg.width, cfg.height, 0};
     if (!pae_chn.phys) {
         rc = call_ioctl(pae_fd, FH8626_PAE_ENC_MEM_SIZE, &q);
         if (rc)
@@ -618,48 +758,27 @@ static int native_venc_fixed_720p(uint32_t chn)
         if (rc)
             return rc;
         mem = (struct pae_mem){chn, pae_chn.phys, pae_chn.virt, pae_chn.size,
-                               FH8626_WIDTH, FH8626_HEIGHT, 0};
+                               cfg.width, cfg.height, 0};
         rc = call_ioctl(pae_fd, FH8626_PAE_ENC_MEM_INIT, &mem);
         if (rc)
             return rc;
     }
-    cfg = (struct pae_cfg){chn, FH8626_WIDTH, FH8626_HEIGHT, 50, 66, 28,
-                           FH8626_FPS_PACKED, 0, 0, 0, 0};
-    rc = call_ioctl(pae_fd, FH8626_PAE_SET_CONFIG, &cfg);
-    if (!rc) {
-        struct pae_rc rate;
-        const char *bitrate_env = getenv("FH8626_MAJESTIC_BITRATE_KBPS");
-        uint32_t bitrate = bitrate_env && bitrate_env[0] ?
-            (uint32_t)strtoul(bitrate_env, NULL, 0) : 4096u;
 
-        if (!bitrate || bitrate > UINT32_MAX / 1000u)
-            return -ERANGE;
-        memset(&rate, 0, sizeof(rate));
-        rate.chn = chn;
-        rate.rc_mode = 0; /* recovered FH8626 VBR wire mode */
-        rate.frame_rate_packed = FH8626_FPS_PACKED;
-        rate.init_qp = 38;
-        rate.bitrate_or_rate = bitrate * 1000u;
-        rate.i_min_qp = 30; rate.i_max_qp = 50;
-        rate.p_min_qp = 30; rate.p_max_qp = 50;
-        rate.i_proportion = 5; rate.p_proportion = 1;
-        rate.ip_qp_delta = 3;
-        rate.max_rate_percent = 120;
-        rate.still_rate_percent = 30;
-        rate.max_still_qp = 38;
+    rc = call_ioctl(pae_fd, FH8626_PAE_SET_CONFIG, &cfg);
+    if (!rc)
         rc = call_ioctl(pae_fd, FH8626_PAE_SET_RC, &rate);
-    }
     if (!rc)
         pae_configured = 1;
     return rc;
 }
 
-/* FH8852 donor uses channel + pointer. Record layout remains unresolved. */
 int FH_VENC_SetChnAttr(uint32_t chn, const void *attr)
 {
-    trace_words("FH_VENC_SetChnAttr", chn, attr, 24);
+    if (!attr)
+        return -EINVAL;
+    trace_words("FH_VENC_SetChnAttr", chn, attr, 37);
     if (env_true("FH8626_MAJESTIC_NATIVE_VENC"))
-        return native_venc_fixed_720p(chn);
+        return native_venc_from_public_attr(chn, (const uint32_t *)attr);
     return strict_stub("FH_VENC_SetChnAttr");
 }
 
@@ -852,8 +971,24 @@ int FH_VENC_SetRCAttr(uint32_t chn, const void *attr)
 
 int FH_VENC_SetRcChangeParam(uint32_t chn, const void *attr)
 {
-    trace_words("FH_VENC_SetRcChangeParam", chn, attr, 8);
-    return strict_stub("FH_VENC_SetRcChangeParam");
+    uint32_t wire[7];
+    int rc;
+
+    if (!attr || chn != 0)
+        return -EINVAL;
+    trace_words("FH_VENC_SetRcChangeParam", chn, attr, 6);
+    if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
+        return strict_stub("FH_VENC_SetRcChangeParam");
+
+    /*
+     * Apollo realtime RC backend copies six public words unchanged after the
+     * channel id and issues the recovered 0x1c-byte request 0xC01C5055.
+     */
+    wire[0] = chn;
+    memcpy(&wire[1], attr, 6u * sizeof(uint32_t));
+    if ((rc = open_native()))
+        return rc;
+    return call_ioctl(pae_fd, 0xC01C5055UL, wire);
 }
 
 int FH_VENC_GetRCAttr(uint32_t chn, void *attr)
