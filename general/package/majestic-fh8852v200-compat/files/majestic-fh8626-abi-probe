@@ -1,3 +1,10 @@
 #!/bin/sh
-export LD_LIBRARY_PATH=/usr/lib/majestic-fh8852v200:/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-exec /usr/libexec/majestic-fh8852v200/fh8626-majestic-abi-probe "$@"
+set -eu
+
+PROBE=/usr/libexec/majestic-fh8852v200/fh8626-majestic-abi-probe
+
+echo "===== donor baseline ====="
+LD_LIBRARY_PATH=/usr/lib/majestic-fh8852v200:/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} 	"$PROBE" --donor
+
+echo "===== FH8626 source compatibility ====="
+LD_LIBRARY_PATH=/usr/lib/majestic-fh8626:/usr/lib/fh8626:/usr/lib/majestic-fh8852v200:/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} 	"$PROBE" --compat

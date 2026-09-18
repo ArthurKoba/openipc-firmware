@@ -168,56 +168,51 @@ static int probe_symbols(void)
     return required_missing;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     enum {
         DONOR_COUNT = sizeof(donor_libraries) / sizeof(donor_libraries[0]),
         COMPAT_COUNT = sizeof(compatibility_libraries) /
                        sizeof(compatibility_libraries[0])
     };
-    void *donor_handles[DONOR_COUNT];
-    void *compat_handles[COMPAT_COUNT];
+    void *handles[COMPAT_COUNT > DONOR_COUNT ? COMPAT_COUNT : DONOR_COUNT];
+    const struct library *set;
+    size_t count;
+    const char *title;
     int devices_missing;
-    int donor_symbols_missing;
-    int compat_symbols_missing;
+    int symbols_missing;
 
-    memset(donor_handles, 0, sizeof(donor_handles));
-    memset(compat_handles, 0, sizeof(compat_handles));
-
+    memset(handles, 0, sizeof(handles));
     puts("FH8626V100 Majestic compatibility ABI probe");
     devices_missing = probe_devices();
 
-    if (load_set("donor-baseline-libraries:", donor_libraries,
-                 DONOR_COUNT, donor_handles)) {
-        close_set(donor_handles, DONOR_COUNT);
-        fprintf(stderr, "probe result: donor dependency closure is not loadable\n");
+    if (argc != 2 ||
+        (strcmp(argv[1], "--donor") && strcmp(argv[1], "--compat"))) {
+        fprintf(stderr, "usage: %s {--donor|--compat}\n", argv[0]);
+        return 64;
+    }
+
+    if (!strcmp(argv[1], "--donor")) {
+        set = donor_libraries;
+        count = DONOR_COUNT;
+        title = "donor-baseline-libraries:";
+    } else {
+        set = compatibility_libraries;
+        count = COMPAT_COUNT;
+        title = "fh8626-source-compatibility-libraries:";
+    }
+
+    if (load_set(title, set, count, handles)) {
+        close_set(handles, count);
+        fprintf(stderr, "probe result: selected dependency closure is not loadable\n");
         return 2;
     }
-    donor_symbols_missing = probe_symbols();
-    close_set(donor_handles, DONOR_COUNT);
 
-    /*
-     * Re-open the runtime exactly in source-first order used by the explicit
-     * FH8626 media runners. This catches unresolved symbols in our adapters
-     * before Majestic enters sensor/ISP/media initialization.
-     */
-    if (load_set("fh8626-source-compatibility-libraries:",
-                 compatibility_libraries, COMPAT_COUNT, compat_handles)) {
-        close_set(compat_handles, COMPAT_COUNT);
-        fprintf(stderr,
-                "probe result: FH8626 source compatibility closure is not loadable\n");
-        return 4;
-    }
-    compat_symbols_missing = probe_symbols();
-    close_set(compat_handles, COMPAT_COUNT);
+    symbols_missing = probe_symbols();
+    close_set(handles, count);
 
-    printf("probe result: devices_missing=%d donor_required_symbols_missing=%d "
-           "compat_required_symbols_missing=%d\n",
-           devices_missing, donor_symbols_missing, compat_symbols_missing);
+    printf("probe result: mode=%s devices_missing=%d required_symbols_missing=%d\n",
+           argv[1], devices_missing, symbols_missing);
 
-    /*
-     * Device-node absence is evidence, not a static ABI failure. Required
-     * symbol loss in either closure is a source/runtime packaging failure.
-     */
-    return (donor_symbols_missing || compat_symbols_missing) ? 3 : 0;
+    return symbols_missing ? 3 : 0;
 }
