@@ -53,9 +53,8 @@
 #define FH8626_VPU_GET_CHN_CFG    0xC00C6949UL
 #define FH8626_VPU_SET_LOGOV2     0xC448696DUL
 #define FH8626_VPU_GET_LOGOV2     0xC448696EUL
-#define FH8626_LOGOV2_WORDS       147u
 #define FH8852_GRAPHV2_WORDS      273u
-#define FH8626_LOGOV2_PLANES      2u
+#define FH8626_LOGOV2_WORDS       274u
 #define FH8626_LOGOV2_PLANE_WORDS 128u
 
 #define FH8626_PAE_SYS_QUERY      0xC0045002UL
@@ -736,25 +735,36 @@ int FH_VPSS_GetChnAttr(uint32_t chn, uint32_t out[2])
 }
 
 
-static void graphv2_public_to_native(uint32_t selector, uint32_t plane,
+static void graphv2_public_to_native(uint32_t selector,
                                      const uint32_t *pub, uint32_t *wire)
 {
     unsigned i;
 
+    /*
+     * Recovered ABI:
+     *
+     * FH8852 public GraphV2 is 273 words:
+     *   17-word header + two 128-word bitmap planes.
+     *
+     * The FH8852 driver receives this as one 0x48-byte header request
+     * (0xC048564B/4D) followed by two 0x20C-byte plane transfers
+     * (0xC20C564F/52).
+     *
+     * FH8626 folds the same data into one 0x448-byte request
+     * (0xC448696D): one selector word + all 273 public words, with the
+     * same header field permutation used by the FH8852 wrapper.
+     */
     memset(wire, 0, FH8626_LOGOV2_WORDS * sizeof(*wire));
     wire[0] = selector;
     wire[1] = pub[1]; /* graph index */
     wire[2] = pub[0]; /* enable */
     for (i = 2; i <= 16; ++i)
         wire[i + 1] = pub[i];
-    wire[18] = plane;
-    memcpy(&wire[19],
-           &pub[17 + plane * FH8626_LOGOV2_PLANE_WORDS],
-           FH8626_LOGOV2_PLANE_WORDS * sizeof(uint32_t));
+    memcpy(&wire[18], &pub[17],
+           2u * FH8626_LOGOV2_PLANE_WORDS * sizeof(uint32_t));
 }
 
-static void graphv2_native_header_to_public(const uint32_t *wire,
-                                            uint32_t *pub)
+static void graphv2_native_to_public(const uint32_t *wire, uint32_t *pub)
 {
     unsigned i;
 
@@ -762,12 +772,13 @@ static void graphv2_native_header_to_public(const uint32_t *wire,
     pub[1] = wire[1];
     for (i = 2; i <= 16; ++i)
         pub[i] = wire[i + 1];
+    memcpy(&pub[17], &wire[18],
+           2u * FH8626_LOGOV2_PLANE_WORDS * sizeof(uint32_t));
 }
 
 static int graphv2_set(uint32_t selector, const uint32_t *pub)
 {
     uint32_t wire[FH8626_LOGOV2_WORDS];
-    uint32_t plane;
     int rc;
 
     if (!pub)
@@ -775,46 +786,39 @@ static int graphv2_set(uint32_t selector, const uint32_t *pub)
     if ((rc = open_native()))
         return rc;
 
-    for (plane = 0; plane < FH8626_LOGOV2_PLANES; ++plane) {
-        graphv2_public_to_native(selector, plane, pub, wire);
-        rc = call_ioctl(isp_fd, FH8626_VPU_SET_LOGOV2, wire);
-        if (rc)
-            return rc;
-    }
-    return 0;
+    graphv2_public_to_native(selector, pub, wire);
+    return call_ioctl(isp_fd, FH8626_VPU_SET_LOGOV2, wire);
 }
 
 static int graphv2_get(uint32_t selector, uint32_t *pub)
 {
     uint32_t wire[FH8626_LOGOV2_WORDS];
-    uint32_t index, plane;
+    uint32_t index;
     int rc;
 
     if (!pub)
         return -EINVAL;
     index = pub[1];
-    memset(pub, 0, FH8852_GRAPHV2_WORDS * sizeof(*pub));
-    pub[1] = index;
-
     if ((rc = open_native()))
         return rc;
 
-    for (plane = 0; plane < FH8626_LOGOV2_PLANES; ++plane) {
-        memset(wire, 0, sizeof(wire));
-        wire[0] = selector;
-        wire[1] = index;
-        wire[18] = plane;
-        rc = call_ioctl(isp_fd, FH8626_VPU_GET_LOGOV2, wire);
-        if (rc)
-            return rc;
-        if (plane == 0)
-            graphv2_native_header_to_public(wire, pub);
-        memcpy(&pub[17 + plane * FH8626_LOGOV2_PLANE_WORDS],
-               &wire[19],
-               FH8626_LOGOV2_PLANE_WORDS * sizeof(uint32_t));
-    }
+    memset(wire, 0, sizeof(wire));
+    wire[0] = selector;
+    wire[1] = index;
+    rc = call_ioctl(isp_fd, FH8626_VPU_GET_LOGOV2, wire);
+    if (rc)
+        return rc;
+
+    memset(pub, 0, FH8852_GRAPHV2_WORDS * sizeof(*pub));
+    graphv2_native_to_public(wire, pub);
     return 0;
 }
+
+_Static_assert(FH8626_LOGOV2_WORDS * sizeof(uint32_t) == 0x448,
+               "FH8626 GraphV2 ioctl wire size");
+_Static_assert(FH8852_GRAPHV2_WORDS == 17u + 2u * FH8626_LOGOV2_PLANE_WORDS,
+               "FH8852 GraphV2 public shape");
+
 
 int FH_VPSS_SetChnGraphV2(uint32_t chn, const uint32_t *graph)
 {
