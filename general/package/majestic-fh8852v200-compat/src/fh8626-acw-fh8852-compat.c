@@ -402,3 +402,24 @@ const char *FH_AC_Version(void)
 {
     return "fh8626-rtx-compat";
 }
+
+
+/* Loader-complete optional FH8852 ACW surface. */
+#define AC_STUB0(name) int name(void) { return unsupported(#name); }
+AC_STUB0(FH_AC_AI_AO_SYNC_Enable)
+AC_STUB0(FH_AC_AI_Bind)
+AC_STUB0(FH_AC_AI_HPF_ChangeCoff)
+AC_STUB0(FH_AC_AI_HPF_Ctrl)
+AC_STUB0(FH_AC_AI_Pause)
+AC_STUB0(FH_AC_AI_PowerDown_MicBias)
+AC_STUB0(FH_AC_AI_QueryBufSize)
+AC_STUB0(FH_AC_AI_Resume)
+AC_STUB0(FH_AC_AO_HPF_Ctrl)
+AC_STUB0(FH_AC_AO_Pause)
+AC_STUB0(FH_AC_AO_QueryBufSize)
+AC_STUB0(FH_AC_AO_Resume)
+AC_STUB0(FH_AC_Ext2_Ioctl)
+AC_STUB0(FH_AC_Ext_Ioctl)
+AC_STUB0(FH_AC_Init_WithExternalCodec)
+AC_STUB0(FH_AC_Raw_GetFrameFast)
+AC_STUB0(FH_AC_Raw_SetConfig)
