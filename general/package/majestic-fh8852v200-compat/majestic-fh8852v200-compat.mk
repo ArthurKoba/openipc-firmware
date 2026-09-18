@@ -57,6 +57,10 @@ define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
 		-Wl,-soname,libacw_mpi.so \
 		-o $(@D)/libacw_mpi.so \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-acw-fh8852-compat.c
+	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) -fPIC -shared \
+		-Wl,-soname,libmipi.so \
+		-o $(@D)/libmipi.so \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-libmipi.c
 endef
 
 define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
@@ -78,6 +82,8 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/usr/lib/majestic-fh8626/libvmm.so
 	$(INSTALL) -m 755 $(@D)/libacw_mpi.so \
 		$(TARGET_DIR)/usr/lib/majestic-fh8626/libacw_mpi.so
+	$(INSTALL) -m 755 $(@D)/libmipi.so \
+		$(TARGET_DIR)/usr/lib/majestic-fh8626/libmipi.so
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/lib/majestic-fh8852v200
 	for lib in $(MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBS); do \
