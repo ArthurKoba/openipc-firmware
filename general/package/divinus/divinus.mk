@@ -4,11 +4,15 @@
 #
 ################################################################################
 
-# FH8626 Divinus hardware-test staging pin. This direction branch must build
-# the exact native-HAL candidate under test; replace with OpenIPC provenance
-# once the implementation is accepted upstream.
+# Keep normal OpenIPC Divinus provenance for every existing target. FH8626
+# alone is pinned to the exact native-HAL candidate under software acceptance.
+ifeq ($(BR2_OPENIPC_SOC_MODEL),fh8626v100)
 DIVINUS_SITE = $(call github,ArthurKoba,openipc-divinus,$(DIVINUS_VERSION))
-DIVINUS_VERSION = f986a82f309b8794a5aae251589c6a5d07690c53
+DIVINUS_VERSION = 50e3e300bb92b609e230ab9af1cf712f49c95a39
+else
+DIVINUS_SITE = $(call github,openipc,divinus,$(DIVINUS_VERSION))
+DIVINUS_VERSION = HEAD
+endif
 DIVINUS_LICENSE = MIT
 DIVINUS_LICENSE_FILES = LICENSE
 
