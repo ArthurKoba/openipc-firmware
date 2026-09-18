@@ -2,7 +2,7 @@
 # Installed separately from /etc/majestic.yaml and bind-mounted only by the
 # manual compatibility runners. It never changes the default HTTP-only boot.
 system:
-  webPort: 80
+  webPort: 18080
   httpsPort: 443
   logLevel: debug
 

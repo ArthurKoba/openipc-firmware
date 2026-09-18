@@ -1,34 +1,46 @@
 #!/bin/sh
 
 PID=/var/run/majestic.pid
+PROXY_PID=/var/run/fh8626-majestic-http.pid
 LOG=/var/log/majestic.log
+PROXY_LOG=/var/log/fh8626-majestic-http.log
 
-pid_is_live()
+pid_live()
 {
-	[ -r "$PID" ] || return 1
-	pid="$(cat "$PID" 2>/dev/null)"
+	[ -r "$1" ] || return 1
+	pid="$(cat "$1" 2>/dev/null)"
 	[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
-wait_exit()
+stop_pid()
 {
+	file="$1"
+	if ! pid_live "$file"; then
+		rm -f "$file"
+		return 0
+	fi
+	pid="$(cat "$file")"
+	kill "$pid" 2>/dev/null || true
 	count=0
-	while pid_is_live && [ "$count" -lt 5 ]; do
+	while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 5 ]; do
 		sleep 1
 		count=$((count + 1))
 	done
-	! pid_is_live
+	if kill -0 "$pid" 2>/dev/null; then
+		kill -9 "$pid" 2>/dev/null || true
+	fi
+	rm -f "$file"
 }
 
 start()
 {
-	if pid_is_live; then
+	if pid_live "$PID"; then
 		return 0
 	fi
-	rm -f "$PID"
+	rm -f "$PID" "$PROXY_PID"
 
 	echo "Starting Majestic FH8626 compatibility control plane"
-	/usr/bin/majestic >>"$LOG" 2>&1 &
+	/usr/libexec/majestic-fh8852v200/majestic >>"$LOG" 2>&1 &
 	pid="$!"
 	echo "$pid" > "$PID"
 
@@ -38,27 +50,23 @@ start()
 		rm -f "$PID"
 		return 1
 	fi
+
+	/usr/libexec/majestic-fh8852v200/fh8626-majestic-http >>"$PROXY_LOG" 2>&1 &
+	proxy="$!"
+	echo "$proxy" > "$PROXY_PID"
+	sleep 1
+	if ! kill -0 "$proxy" 2>/dev/null; then
+		echo "ERROR: FH8626 HTTP metrics proxy exited; see $PROXY_LOG" >&2
+		stop_pid "$PID"
+		rm -f "$PROXY_PID"
+		return 1
+	fi
 }
 
 stop()
 {
-	if ! pid_is_live; then
-		rm -f "$PID"
-		return 0
-	fi
-
-	pid="$(cat "$PID")"
-	kill "$pid" 2>/dev/null || true
-	if ! wait_exit; then
-		kill -9 "$pid" 2>/dev/null || true
-		sleep 1
-	fi
-
-	if pid_is_live; then
-		echo "ERROR: Majestic did not stop" >&2
-		return 1
-	fi
-	rm -f "$PID"
+	stop_pid "$PROXY_PID"
+	stop_pid "$PID"
 }
 
 case "${1:-start}" in

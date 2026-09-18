@@ -3,7 +3,7 @@
 # compatible with the FH8626 GC1054/ISP path. Keep every media consumer off
 # until the compatibility layer is implemented and hardware-tested.
 system:
-  webPort: 80
+  webPort: 18080
   httpsPort: 443
   logLevel: debug
 
