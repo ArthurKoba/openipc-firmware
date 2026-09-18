@@ -68,8 +68,8 @@ define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
 		-o $(@D)/libgc1054_fh8626_native.so \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-gc1054-native.c \
 		-L$(@D) -Wl,-rpath-link,$(@D) -lmipi
-	$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/scripts/check-majestic-imports.sh \
-		"$(TARGET_READELF)" "$(@D)/majestic" \
+	$(SHELL) $(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/scripts/check-majestic-imports.sh \
+		"$(TARGET_CROSS)readelf" "$(@D)/majestic" \
 		"$(@D)/libdsp.so" \
 		"$(@D)/libvmm.so" \
 		"$(@D)/libacw_mpi.so" \
