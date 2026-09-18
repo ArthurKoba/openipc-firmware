@@ -1,0 +1,68 @@
+#!/bin/sh
+set -eu
+
+KMOD_DIR="/lib/modules/$(uname -r)/extra"
+
+module_loaded()
+{
+	grep -q "^$1 " /proc/modules
+}
+
+load_module()
+{
+	name="$1"
+	shift
+
+	module_loaded "$name" && return 0
+	if modprobe "$name" "$@" 2>/dev/null; then
+		return 0
+	fi
+	[ -r "$KMOD_DIR/$name.ko" ] || {
+		echo "ERROR: missing $KMOD_DIR/$name.ko" >&2
+		return 1
+	}
+	insmod "$KMOD_DIR/$name.ko" "$@"
+}
+
+check_media_devices()
+{
+	missing=0
+	for device in /dev/vmm_userdev /dev/media_process /dev/isp /dev/pae /dev/jpeg; do
+		if [ ! -c "$device" ]; then
+			echo "ERROR: FH8626 media runtime did not create $device" >&2
+			missing=1
+		fi
+	done
+	return "$missing"
+}
+
+if module_loaded vmm; then
+	if check_media_devices; then
+		echo "FH8626 media modules already loaded"
+		exit 0
+	fi
+	echo "ERROR: FH8626 media modules are partially loaded; reboot before retrying" >&2
+	exit 1
+fi
+
+echo "Loading FH8626 media modules..."
+load_module vmm 'mmz=anonymous,0,0xa2700000,25088K' anony=1
+load_module xbus_rpc fn=/lib/firmware/rtthread_arc.bin fa=0xbff80000
+load_module media_process
+load_module isp
+load_module enc
+load_module jpeg
+load_module bgm
+load_module gpio_wave GW_TIMER_INTERVAL=100
+
+mdev -s
+
+# gpio_wave registers misc minor 49 without the sysfs metadata BusyBox mdev
+# expects. Stock firmware ships the node statically.
+if [ ! -c /dev/gpiowave8 ]; then
+	mknod /dev/gpiowave8 c 10 49
+	chmod 0660 /dev/gpiowave8
+fi
+
+check_media_devices
+echo "FH8626 media modules loaded"

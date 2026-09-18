@@ -43,6 +43,11 @@ BR2_OPENIPC_SOC_FAMILY="fh8626v100"
 BR2_OPENIPC_VARIANT="lite"
 BR2_OPENIPC_FLASH_SIZE="8"
 
+# Proprietary FH8626 media-kernel ABI retained outside active source history.
+# Package downloads the exact hardware-proven modules from an immutable archive
+# commit and verifies every payload by SHA-256.
+BR2_PACKAGE_FULLHAN_MEDIA_FH8626V100=y
+
 # Packages
 BR2_PACKAGE_DROPBEAR_OPENIPC=y
 BR2_PACKAGE_DROPBEAR_OPENIPC_DISABLE_REVERSEDNS=y
