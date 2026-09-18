@@ -1,0 +1,35 @@
+#!/bin/sh
+
+PID=/var/run/majestic.pid
+LOG=/var/log/majestic.log
+
+start() {
+	if [ -r "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null; then
+		return 0
+	fi
+
+	echo "Starting Majestic FH8626 compatibility control plane"
+	/usr/bin/majestic >>"$LOG" 2>&1 &
+	echo $! > "$PID"
+}
+
+stop() {
+	if [ -r "$PID" ]; then
+		kill "$(cat "$PID")" 2>/dev/null || true
+		rm -f "$PID"
+	fi
+}
+
+case "${1:-start}" in
+	start) start ;;
+	stop) stop ;;
+	restart)
+		stop
+		sleep 1
+		start
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart}" >&2
+		exit 2
+		;;
+esac

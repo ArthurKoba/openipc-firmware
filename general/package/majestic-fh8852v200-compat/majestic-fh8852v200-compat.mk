@@ -59,7 +59,7 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/etc/init.d
 	$(INSTALL) -m 755 \
-		$(BR2_EXTERNAL_GENERAL_PATH)/package/majestic/files/S95majestic \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/S95majestic \
 		$(TARGET_DIR)/etc/init.d/S95majestic
 endef
 
