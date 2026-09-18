@@ -8,7 +8,7 @@
 # the exact native-HAL candidate under test; replace with OpenIPC provenance
 # once the implementation is accepted upstream.
 DIVINUS_SITE = $(call github,ArthurKoba,openipc-divinus,$(DIVINUS_VERSION))
-DIVINUS_VERSION = 684d0e1fc074435c4d14256c1d5d62ff87c2ebef
+DIVINUS_VERSION = 168b2ecfeffcb53c2ed2a1d86c4897fdd3423820
 DIVINUS_LICENSE = MIT
 DIVINUS_LICENSE_FILES = LICENSE
 
