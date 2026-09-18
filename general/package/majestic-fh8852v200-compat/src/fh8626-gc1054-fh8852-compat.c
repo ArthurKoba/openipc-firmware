@@ -14,10 +14,10 @@
  * FH8626V100 GC1054 plug-in exposes a different 0x68-byte table. Passing the
  * FH8626 table directly to the FH8852 ISP corrupts the ABI boundary.
  *
- * The facade translates callbacks whose FH8626 meaning is already recovered.
- * Unresolved FH8852-only controls are deliberately localized here. By default
- * they are successful no-ops for bring-up; set FH8626_MAJESTIC_STRICT=1 to
- * return -ENOSYS instead and expose accidental dependency on a stub.
+ * The facade translates the selected FH8852 callback ABI onto recovered
+ * FH8626 GC1054 state/operations. The current callback table contains no
+ * permissive unresolved stubs; optional donor semantics are implemented only
+ * where stock FH8626 or repeated FH8852 donor evidence establishes behavior.
  */
 
 #define FH8626_CB_SIZE 0x68u
@@ -85,32 +85,10 @@ _Static_assert(sizeof(struct fh8852_sensor_if) == FH8852_CB_SIZE,
 
 static void *native_handle;
 static uint8_t *native_if;
-static int strict_mode = -1;
 static uint32_t mirror_flip;
 static uint32_t awb_gain[3];
 static uint32_t exposure_ratio = 0x100u;
 static uint32_t lane_num_max = 2u;
-
-static int strict(void)
-{
-    const char *value;
-
-    if (strict_mode >= 0)
-        return strict_mode;
-    value = getenv("FH8626_MAJESTIC_STRICT");
-    strict_mode = value && value[0] && strcmp(value, "0");
-    return strict_mode;
-}
-
-static int unresolved(const char *name)
-{
-    if (strict()) {
-        fprintf(stderr, "fh8626-majestic-sensor: unresolved FH8852 callback %s\n",
-                name);
-        return -ENOSYS;
-    }
-    return 0;
-}
 
 static void *native_cb(unsigned off)
 {
