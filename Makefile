@@ -32,7 +32,7 @@ BOARD := $(or $(shell whiptail --title "Available boards" --menu "Select a confi
 endif
 
 ifneq ($(BOARD),)
-CONFIG := $(shell find br-ext-*/configs/*_defconfig | grep -m1 $(BOARD))
+CONFIG := $(shell find br-ext-*/configs -type f -name '$(BOARD)_defconfig' -print -quit)
 include $(CONFIG)
 endif
 

@@ -1,0 +1,15 @@
+config BR2_PACKAGE_FULLHAN_MEDIA_FH8626V100
+	bool "FH8626V100 proprietary media kernel runtime"
+	depends on BR2_arm
+	help
+	  Pinned proprietary FH8626V100 media kernel modules and ARC firmware.
+
+	  Active OpenIPC source branches do not store these binary artifacts.
+	  Buildroot downloads the hardware-proven payloads from an immutable
+	  archive commit and verifies every file with SHA-256 before install.
+
+	  This package provides only the still-unreplaced kernel/ARC runtime:
+	  VMM, XBUS RPC, media_process, ISP, H.264 encoder, JPEG, BGM and
+	  gpio_wave. Sensor/MIPI/userspace compatibility is owned separately.
+
+	  https://github.com/ArthurKoba/openipc-firmware
