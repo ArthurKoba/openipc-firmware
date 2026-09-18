@@ -50,6 +50,11 @@
 #define FH8626_PAE_STOP_RECV      0xC0045009UL
 #define FH8626_PAE_STREAM_STEP    0xC0045011UL
 #define FH8626_PAE_FORCE_I        0xC0045014UL
+#define FH8626_PAE_SET_RC         0xC054502FUL
+
+#define FH8626_ISP_MMIO_PHYS      0xE8400000u
+#define FH8626_ISP_MMIO_SIZE      0x4000u
+#define FH8626_ISP_PRODUCER_MASK  0x000FFFFFu
 
 #define FH8626_WIDTH              1280u
 #define FH8626_HEIGHT             720u
@@ -83,6 +88,18 @@ struct pae_cfg {
     uint32_t chn, width, height, field0c, profile, qp, fps, mode;
     uint32_t field20, field24, field28;
 };
+
+struct pae_rc {
+    uint32_t chn, rc_mode, frame_rate_packed, mode2_qp_a, mode2_qp_b;
+    uint32_t init_qp, bitrate_or_rate;
+    uint32_t i_min_qp, i_max_qp, p_min_qp, p_max_qp;
+    uint32_t i_proportion, p_proportion, fluctuate_level;
+    int32_t ip_qp_delta;
+    uint32_t i_target_limit_bits, max_rate_percent, still_rate_percent;
+    uint32_t max_still_qp, additional_rate_bits, extra_qp_parameter;
+};
+
+_Static_assert(sizeof(struct pae_rc) == 0x54, "FH8626 PAE RC wire size");
 
 static int isp_fd = -1;
 static int media_fd = -1;
@@ -147,6 +164,44 @@ static void *map_phys(uint32_t phys, uint32_t size)
 #else
     return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, vmm_fd, phys);
 #endif
+}
+
+
+static int producer_gate(int enable)
+{
+    int fd;
+    volatile uint32_t *regs;
+    uint32_t pending;
+
+    if (!env_true("FH8626_MAJESTIC_NATIVE_VENC"))
+        return 0;
+    fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
+    if (fd < 0)
+        return -errno;
+#if defined(__arm__)
+    regs = (volatile uint32_t *)(intptr_t)syscall(
+        192, NULL, FH8626_ISP_MMIO_SIZE, PROT_READ | PROT_WRITE,
+        MAP_SHARED, fd, FH8626_ISP_MMIO_PHYS >> 12);
+#else
+    regs = mmap(NULL, FH8626_ISP_MMIO_SIZE, PROT_READ | PROT_WRITE,
+                MAP_SHARED, fd, FH8626_ISP_MMIO_PHYS);
+#endif
+    if ((void *)regs == MAP_FAILED) {
+        close(fd);
+        return -errno;
+    }
+    if (enable) {
+        pending = regs[0x004u / 4u];
+        if (pending)
+            regs[0x004u / 4u] = pending;
+        regs[0x008u / 4u] = FH8626_ISP_PRODUCER_MASK;
+    } else {
+        regs[0x008u / 4u] = 0;
+    }
+    __sync_synchronize();
+    munmap((void *)regs, FH8626_ISP_MMIO_SIZE);
+    close(fd);
+    return 0;
 }
 
 static int alloc_vmm(const char *name, uint32_t need, struct mem3 *mem)
@@ -531,6 +586,29 @@ static int native_venc_fixed_720p(uint32_t chn)
     cfg = (struct pae_cfg){chn, FH8626_WIDTH, FH8626_HEIGHT, 50, 66, 28,
                            FH8626_FPS_PACKED, 0, 0, 0, 0};
     rc = call_ioctl(pae_fd, FH8626_PAE_SET_CONFIG, &cfg);
+    if (!rc) {
+        struct pae_rc rate;
+        const char *bitrate_env = getenv("FH8626_MAJESTIC_BITRATE_KBPS");
+        uint32_t bitrate = bitrate_env && bitrate_env[0] ?
+            (uint32_t)strtoul(bitrate_env, NULL, 0) : 4096u;
+
+        if (!bitrate || bitrate > UINT32_MAX / 1000u)
+            return -ERANGE;
+        memset(&rate, 0, sizeof(rate));
+        rate.chn = chn;
+        rate.rc_mode = 0; /* recovered FH8626 VBR wire mode */
+        rate.frame_rate_packed = FH8626_FPS_PACKED;
+        rate.init_qp = 38;
+        rate.bitrate_or_rate = bitrate * 1000u;
+        rate.i_min_qp = 30; rate.i_max_qp = 50;
+        rate.p_min_qp = 30; rate.p_max_qp = 50;
+        rate.i_proportion = 5; rate.p_proportion = 1;
+        rate.ip_qp_delta = 3;
+        rate.max_rate_percent = 120;
+        rate.still_rate_percent = 30;
+        rate.max_still_qp = 38;
+        rc = call_ioctl(pae_fd, FH8626_PAE_SET_RC, &rate);
+    }
     if (!rc)
         pae_configured = 1;
     return rc;
@@ -554,15 +632,23 @@ int FH_VENC_StartRecvPic(uint32_t chn)
         return -EPIPE;
     if ((rc = open_native()))
         return rc;
-    return call_ioctl(pae_fd, FH8626_PAE_START_RECV, &chn);
+    rc = call_ioctl(pae_fd, FH8626_PAE_START_RECV, &chn);
+    if (rc)
+        return rc;
+    rc = producer_gate(1);
+    if (rc)
+        (void)call_ioctl(pae_fd, FH8626_PAE_STOP_RECV, &chn);
+    return rc;
 }
 
 int FH_VENC_StopRecvPic(uint32_t chn)
 {
-    int rc;
+    int rc, gate_rc;
     if ((rc = open_native()))
         return rc;
-    return call_ioctl(pae_fd, FH8626_PAE_STOP_RECV, &chn);
+    gate_rc = producer_gate(0);
+    rc = call_ioctl(pae_fd, FH8626_PAE_STOP_RECV, &chn);
+    return rc ? rc : gate_rc;
 }
 
 int FH_VENC_RequestIDR(uint32_t chn)
