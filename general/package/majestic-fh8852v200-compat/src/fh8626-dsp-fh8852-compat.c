@@ -57,6 +57,8 @@
 #define FH8852_GRAPHV2_WORDS      273u
 #define FH8626_LOGOV2_WORDS       274u
 #define FH8626_LOGOV2_PLANE_WORDS 128u
+#define FH8626_LOGOV2_GLOBAL_SLOTS 2u
+#define FH8626_LOGOV2_CHN_SLOTS    4u
 
 #define FH8626_PAE_SYS_QUERY      0xC0045002UL
 #define FH8626_PAE_SYS_INIT       0xC00C5000UL
@@ -777,12 +779,21 @@ static void graphv2_native_to_public(const uint32_t *wire, uint32_t *pub)
            2u * FH8626_LOGOV2_PLANE_WORDS * sizeof(uint32_t));
 }
 
+static int graphv2_slot_valid(uint32_t selector, uint32_t index)
+{
+    if (selector > 2u)
+        return 0;
+    if (selector == 0u)
+        return index < FH8626_LOGOV2_GLOBAL_SLOTS;
+    return index < FH8626_LOGOV2_CHN_SLOTS;
+}
+
 static int graphv2_set(uint32_t selector, const uint32_t *pub)
 {
     uint32_t wire[FH8626_LOGOV2_WORDS];
     int rc;
 
-    if (!pub)
+    if (!pub || !graphv2_slot_valid(selector, pub[1]))
         return -EINVAL;
     if ((rc = open_native()))
         return rc;
@@ -800,6 +811,8 @@ static int graphv2_get(uint32_t selector, uint32_t *pub)
     if (!pub)
         return -EINVAL;
     index = pub[1];
+    if (!graphv2_slot_valid(selector, index))
+        return -EINVAL;
     if ((rc = open_native()))
         return rc;
 
