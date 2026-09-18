@@ -124,6 +124,8 @@ static uint32_t ac_map_length;
 static uint32_t ac_tail_length;
 static uint8_t *ac_ao_buffer;
 static uint32_t ac_ao_offset;
+static int ac_ai_enabled;
+static int ac_ao_enabled;
 
 static int trace_enabled(void)
 {
@@ -201,6 +203,8 @@ int FH_AC_Init(void)
         goto fail;
     }
 
+    ac_ai_enabled = 0;
+    ac_ao_enabled = 0;
     ac_map_offset = r.map_offset;
     ac_map_length = r.map_length;
     ac_tail_length = r.tail_length;
@@ -222,6 +226,30 @@ fail:
 
 int FH_AC_DeInit(void)
 {
+    int first_error = 0;
+    int rc;
+
+    /*
+     * Keep the RTX transport balanced. The hardware-proven platform path
+     * disables active directions before unmapping/closing /dev/rtxbus.
+     * Physical speaker-amplifier mute remains board-owned and is not handled
+     * inside this generic FH_AC compatibility library.
+     */
+    if (ac_fd >= 0 && ac_ai_enabled) {
+        rc = simple(AC_CMD_AI_DISABLE, 0);
+        if (rc && !first_error)
+            first_error = rc;
+        else if (!rc)
+            ac_ai_enabled = 0;
+    }
+    if (ac_fd >= 0 && ac_ao_enabled) {
+        rc = simple(AC_CMD_AO_DISABLE, 0);
+        if (rc && !first_error)
+            first_error = rc;
+        else if (!rc)
+            ac_ao_enabled = 0;
+    }
+
     if (ac_map != MAP_FAILED) {
         munmap(ac_map, ac_map_length);
         ac_map = MAP_FAILED;
@@ -231,7 +259,9 @@ int FH_AC_DeInit(void)
     if (ac_fd >= 0)
         close(ac_fd);
     ac_fd = -1;
-    return 0;
+    ac_ai_enabled = 0;
+    ac_ao_enabled = 0;
+    return first_error;
 }
 
 int FH_AC_Set_InitParam(const void *blob)
@@ -287,6 +317,8 @@ static int ai_frame_fast(struct fh_ac_frame *frame, uint64_t *pts)
     int rc;
 
     if (!frame)
+        return FH_AC_E_ARGUMENT;
+    if (!ac_ai_enabled)
         return FH_AC_E_ARGUMENT;
     frame->length = 0;
     frame->data = NULL;
@@ -350,6 +382,8 @@ int FH_AC_AO_SendFrame(const struct fh_ac_frame *frame)
 
     if (!frame || !frame->data)
         return FH_AC_E_ARGUMENT;
+    if (!ac_ao_enabled)
+        return FH_AC_E_ARGUMENT;
     if (!frame->length || (frame->length & 1u) ||
         !ac_tail_length || frame->length > ac_tail_length ||
         !ac_ao_buffer)
@@ -362,10 +396,43 @@ int FH_AC_AO_SendFrame(const struct fh_ac_frame *frame)
     return rc ? rc : r.status;
 }
 
-int FH_AC_AI_Enable(void) { return simple(AC_CMD_AI_ENABLE, 0); }
-int FH_AC_AI_Disable(void) { return simple(AC_CMD_AI_DISABLE, 0); }
-int FH_AC_AO_Enable(void) { return simple(AC_CMD_AO_ENABLE, 0); }
-int FH_AC_AO_Disable(void) { return simple(AC_CMD_AO_DISABLE, 0); }
+int FH_AC_AI_Enable(void)
+{
+    int rc = simple(AC_CMD_AI_ENABLE, 0);
+    if (!rc)
+        ac_ai_enabled = 1;
+    return rc;
+}
+
+int FH_AC_AI_Disable(void)
+{
+    int rc;
+    if (!ac_ai_enabled)
+        return 0;
+    rc = simple(AC_CMD_AI_DISABLE, 0);
+    if (!rc)
+        ac_ai_enabled = 0;
+    return rc;
+}
+
+int FH_AC_AO_Enable(void)
+{
+    int rc = simple(AC_CMD_AO_ENABLE, 0);
+    if (!rc)
+        ac_ao_enabled = 1;
+    return rc;
+}
+
+int FH_AC_AO_Disable(void)
+{
+    int rc;
+    if (!ac_ao_enabled)
+        return 0;
+    rc = simple(AC_CMD_AO_DISABLE, 0);
+    if (!rc)
+        ac_ao_enabled = 0;
+    return rc;
+}
 int FH_AC_AI_SetVol(uint32_t v) { return simple(AC_CMD_AI_VOLUME, v); }
 int FH_AC_AI_MICIN_SetVol(uint32_t v) { return simple(AC_CMD_AI_MICIN_VOL, v); }
 int FH_AC_AO_SetVol(uint32_t v) { return simple(AC_CMD_AO_VOLUME, v); }
