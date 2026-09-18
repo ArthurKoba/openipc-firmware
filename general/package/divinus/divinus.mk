@@ -4,8 +4,11 @@
 #
 ################################################################################
 
-DIVINUS_SITE = $(call github,openipc,divinus,$(DIVINUS_VERSION))
-DIVINUS_VERSION = HEAD
+# FH8626 Divinus hardware-test staging pin. This direction branch must build
+# the exact native-HAL candidate under test; replace with OpenIPC provenance
+# once the implementation is accepted upstream.
+DIVINUS_SITE = $(call github,ArthurKoba,openipc-divinus,$(DIVINUS_VERSION))
+DIVINUS_VERSION = 684d0e1fc074435c4d14256c1d5d62ff87c2ebef
 DIVINUS_LICENSE = MIT
 DIVINUS_LICENSE_FILES = LICENSE
 
