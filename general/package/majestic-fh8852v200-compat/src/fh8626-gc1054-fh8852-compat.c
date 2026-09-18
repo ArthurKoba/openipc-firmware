@@ -85,10 +85,8 @@ _Static_assert(sizeof(struct fh8852_sensor_if) == FH8852_CB_SIZE,
 
 static void *native_handle;
 static uint8_t *native_if;
-static uint32_t mirror_flip;
 static uint32_t awb_gain[3];
 static uint32_t exposure_ratio = 0x100u;
-static uint32_t lane_num_max = 2u;
 
 static void *native_cb(unsigned off)
 {
@@ -236,10 +234,7 @@ static int compat_get_vi_attr(void *attr)
 
 static int compat_set_flip_mirror(uint32_t value)
 {
-    int rc = call1(FH8626_SET_MIRROR, value);
-    if (!rc)
-        mirror_flip = value;
-    return rc;
+    return call1(FH8626_SET_MIRROR, value);
 }
 
 static int compat_get_flip_mirror(uint32_t *value)
@@ -256,8 +251,6 @@ static int compat_get_flip_mirror(uint32_t *value)
     if (!fn)
         return -ENOSYS;
     rc = fn(value);
-    if (!rc)
-        mirror_flip = *value;
     return rc;
 }
 
@@ -346,7 +339,11 @@ static int compat_get_sensor_attribute(const char *name, uint32_t *value)
 
 static int compat_set_lane_num_max(uint32_t lanes)
 {
-    lane_num_max = lanes;
+    (void)lanes;
+    /*
+     * FH8626 stock GC1054 has no lane-max callback. Its hardware-proven MIPI
+     * lane/PHY contract is supplied by the fixed native GC1054 init words.
+     */
     return 0;
 }
 
