@@ -156,6 +156,7 @@ UNBUILT_BOARDS = {
     # it builds. Note what this does NOT say --- none of these has ever been
     # built by CI, so "not built" is a statement about cost, not evidence that
     # they work.
+    "fh8626v100_lite": "temporary Linux source pin and internal toolchain; owner build gate pending",
     "fh8852v210_lite": "internal toolchain: builds gcc+musl from source",
     "fh8856v100_lite": "internal toolchain: builds gcc+musl from source",
     "fh8856v200_lite": "internal toolchain: builds gcc+musl from source",
@@ -227,6 +228,7 @@ UNBUILT_FAMILIES = {
     ("br-ext-chip-ambarella", "s3l"),
     ("br-ext-chip-anyka", "ak3918ev300"),
     ("br-ext-chip-fullhan", "fh8833v100"),
+    ("br-ext-chip-fullhan", "fh8626v100"),
     ("br-ext-chip-sigmastar", "infinity3"),
     ("br-ext-chip-ti", "dm36x"),
 }
