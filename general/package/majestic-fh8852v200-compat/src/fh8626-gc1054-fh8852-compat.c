@@ -29,6 +29,8 @@ enum {
     FH8626_GET_VI     = 0x08,
     FH8626_SET_INTT   = 0x10,
     FH8626_UPDATE     = 0x14,
+    FH8626_SET_MIRROR = 0x1c,
+    FH8626_GET_MIRROR = 0x20,
     FH8626_INIT       = 0x28,
     FH8626_CLOSE      = 0x30,
     FH8626_SET_FMT    = 0x34,
@@ -188,15 +190,29 @@ static int compat_get_vi_attr(void *attr)
 
 static int compat_set_flip_mirror(uint32_t value)
 {
-    mirror_flip = value;
-    return unresolved("SetSensorFlipMirror");
+    int rc = call1(FH8626_SET_MIRROR, value);
+    if (!rc)
+        mirror_flip = value;
+    return rc;
 }
 
 static int compat_get_flip_mirror(uint32_t *value)
 {
-    if (value)
-        *value = mirror_flip;
-    return value ? 0 : -EINVAL;
+    typedef int (*fn_t)(uint32_t *);
+    fn_t fn = NULL;
+    int rc;
+
+    if (!value)
+        return -EINVAL;
+    if (native_open())
+        return -EIO;
+    *(void **)(&fn) = native_cb(FH8626_GET_MIRROR);
+    if (!fn)
+        return -ENOSYS;
+    rc = fn(value);
+    if (!rc)
+        mirror_flip = *value;
+    return rc;
 }
 
 static int compat_set_iris(uint32_t value)

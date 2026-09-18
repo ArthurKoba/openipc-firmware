@@ -226,6 +226,58 @@ static int gc_get_intt(uint32_t *integration)
     return 0;
 }
 
+
+static int gc_set_mirror_flip(uint32_t mode)
+{
+    uint32_t reg;
+    uint32_t base;
+    int value;
+    int rc;
+
+    if (mode & ~3u)
+        return -EINVAL;
+    rc = Sensor_Write(0xfe, 0);
+    if (rc)
+        return rc;
+    value = Sensor_Read(0x17);
+    if (value < 0)
+        return value;
+
+    reg = (uint32_t)value & ~3u;
+    base = orientation_mode ? 1u : 0u;
+
+    /*
+     * Stock Gc1054ReadMirrorFlipRegister proves the logical mapping:
+     * logical bit0 = base XOR sensor reg17 bit1
+     * logical bit1 = base XOR sensor reg17 bit0
+     */
+    reg |= (base ^ ((mode >> 1) & 1u));
+    reg |= (base ^ (mode & 1u)) << 1;
+    return Sensor_Write(0x17, reg);
+}
+
+static int gc_get_mirror_flip(uint32_t *mode)
+{
+    uint32_t base;
+    uint32_t reg;
+    int value;
+    int rc;
+
+    if (!mode)
+        return -EINVAL;
+    rc = Sensor_Write(0xfe, 0);
+    if (rc)
+        return rc;
+    value = Sensor_Read(0x17);
+    if (value < 0)
+        return value;
+    reg = (uint32_t)value;
+    base = orientation_mode ? 1u : 0u;
+    *mode = (base ^ ((reg >> 1) & 1u)) |
+            ((base ^ (reg & 1u)) << 1);
+    return 0;
+}
+
 static int gc_set_frame_length(uint32_t frame_length)
 {
     const struct fh8626_gc1054_format_contract *f;
@@ -368,6 +420,8 @@ static struct fh8626_gc1054_callbacks callbacks = {
     .set_intt = gc_set_intt,
     .set_vts = gc_set_vts_multiplier,
     .get_intt = gc_get_intt,
+    .set_mirror_flip = gc_set_mirror_flip,
+    .get_mirror_flip = gc_get_mirror_flip,
     .init = gc_init,
     .close = gc_close,
     .set_fmt = gc_set_format,
