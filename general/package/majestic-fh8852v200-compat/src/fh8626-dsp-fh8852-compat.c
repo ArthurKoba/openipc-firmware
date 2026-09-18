@@ -17,10 +17,11 @@
  * but a different ioctl family (0x56xx instead of FH8626 0x69xx). This source
  * layer translates only contracts that are already recovered on FH8626.
  *
- * VENC record layouts exposed by FH8852 Majestic are not yet fully recovered.
- * Those entry points are explicit staging boundaries: safe no-data behavior by
- * default, optional fixed 720p native bring-up behind
- * FH8626_MAJESTIC_NATIVE_VENC=1, and -ENOSYS in strict mode.
+ * The active Majestic-facing media surface is translated from recovered
+ * FH8852 public contracts onto FH8626 native contracts: multi-channel H.264
+ * attributes/RC/stream ownership, VPSS, JPEG/MJPEG, motion/YCmean and OSD
+ * GraphV2. Remaining SDK-only exports are explicit -ENOTSUP boundaries and
+ * are excluded from the advertised FH8626 capability surface.
  */
 
 #define FH8626_VMM_ALLOC          0xC0686D0AUL
@@ -2269,12 +2270,12 @@ int _JPEG_GetHwAvgTime(void *opaque, uint32_t chn, uint32_t *out)
  * in the retained AJL33PQ0866 stock stack. Never turn H.265 into a permissive
  * success: callers must see that this SoC/driver path does not provide it.
  */
-int FH_VENC_GetH265Dblk(void) { return -ENOTSUP; }
-int FH_VENC_GetH265IntraFresh(void) { return -ENOTSUP; }
-int FH_VENC_GetH265SliceSplit(void) { return -ENOTSUP; }
-int FH_VENC_SetH265Dblk(void) { return -ENOTSUP; }
-int FH_VENC_SetH265IntraFresh(void) { return -ENOTSUP; }
-int FH_VENC_SetH265SliceSplit(void) { return -ENOTSUP; }
+int FH_VENC_GetH265Dblk(void) { return unsupported_feature("FH_VENC_GetH265Dblk"); }
+int FH_VENC_GetH265IntraFresh(void) { return unsupported_feature("FH_VENC_GetH265IntraFresh"); }
+int FH_VENC_GetH265SliceSplit(void) { return unsupported_feature("FH_VENC_GetH265SliceSplit"); }
+int FH_VENC_SetH265Dblk(void) { return unsupported_feature("FH_VENC_SetH265Dblk"); }
+int FH_VENC_SetH265IntraFresh(void) { return unsupported_feature("FH_VENC_SetH265IntraFresh"); }
+int FH_VENC_SetH265SliceSplit(void) { return unsupported_feature("FH_VENC_SetH265SliceSplit"); }
 
 /* Loader-complete optional FH8852 DSP/JPEG surface. */
 SIMPLE_STUB0(FH_SYS_GetChipID)

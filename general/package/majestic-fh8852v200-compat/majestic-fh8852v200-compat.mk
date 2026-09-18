@@ -70,6 +70,7 @@ define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
 		-L$(@D) -Wl,-rpath-link,$(@D) -lmipi
 	$(SHELL) $(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/scripts/check-majestic-imports.sh \
 		"$(TARGET_CROSS)readelf" "$(@D)/majestic" \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-dsp-fh8852-compat.c \
 		"$(@D)/libdsp.so" \
 		"$(@D)/libvmm.so" \
 		"$(@D)/libacw_mpi.so" \
