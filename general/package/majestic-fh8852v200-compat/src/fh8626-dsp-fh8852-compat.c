@@ -643,11 +643,28 @@ int FH_VENC_StartRecvPic(uint32_t chn)
 
 int FH_VENC_StopRecvPic(uint32_t chn)
 {
-    int rc, gate_rc;
+    uint32_t channel = 0;
+    int rc, gate_rc, release_rc = 0;
+
+    if (chn != 0)
+        return -ENOTSUP;
     if ((rc = open_native()))
         return rc;
+
+    /*
+     * Native FH8626 teardown requires every encoded-stream lease to be
+     * released before STOP_RECV. Preserve that invariant even when Majestic
+     * stops a channel while its consumer still owns the last stream record.
+     */
+    if (stream_lease_held) {
+        release_rc = call_ioctl(pae_fd, FH8626_PAE_STREAM_STEP, &channel);
+        if (!release_rc)
+            stream_lease_held = 0;
+    }
     gate_rc = producer_gate(0);
     rc = call_ioctl(pae_fd, FH8626_PAE_STOP_RECV, &chn);
+    if (release_rc)
+        return release_rc;
     return rc ? rc : gate_rc;
 }
 
@@ -746,12 +763,27 @@ int FH_VENC_GetStream(uint32_t chn, void *stream)
 
 int FH_VENC_GetStream_Block(uint32_t chn, void *stream)
 {
+    const char *wait_env = getenv("FH8626_MAJESTIC_STREAM_WAIT_MS");
+    unsigned long wait_ms = wait_env && wait_env[0] ?
+        strtoul(wait_env, NULL, 0) : 200ul;
+    unsigned long elapsed = 0;
+    int rc;
+
     /*
-     * FH8626 MEDIA_STREAM is the recovered producer dequeue. The kernel-side
-     * wait semantics of the old FH8852 blocking ioctl do not exist as the same
-     * request; callers may retry on -EAGAIN.
+     * FH8626 has no binary-compatible equivalent of the FH8852 blocking
+     * 0xC1A04D06 request. Emulate its bounded wait in userspace by polling the
+     * recovered dequeue contract. This avoids an unbounded thread hang during
+     * bring-up while preserving a useful blocking surface for Majestic.
      */
-    return acquire_stream(chn, stream);
+    do {
+        rc = acquire_stream(chn, stream);
+        if (rc != -EAGAIN && rc != -EIO && rc != -ETIMEDOUT)
+            return rc;
+        if (elapsed >= wait_ms)
+            return -EAGAIN;
+        usleep(1000);
+        elapsed++;
+    } while (1);
 }
 
 int FH_VENC_ReleaseStream(uint32_t chn, void *stream)
