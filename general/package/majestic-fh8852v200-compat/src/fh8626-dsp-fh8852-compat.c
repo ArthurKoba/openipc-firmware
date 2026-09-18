@@ -101,6 +101,14 @@ struct pae_rc {
 
 _Static_assert(sizeof(struct pae_rc) == 0x54, "FH8626 PAE RC wire size");
 
+_Static_assert(sizeof(struct mem3) == 0x0c, "FH8626 mem3 wire size");
+_Static_assert(sizeof(struct vpu_query) == 0x10, "FH8626 VPU query wire size");
+_Static_assert(sizeof(struct vpu_mem) == 0x18, "FH8626 VPU memory wire size");
+_Static_assert(sizeof(struct channel_cfg) == 0x0c, "FH8626 VPU channel cfg wire size");
+_Static_assert(sizeof(struct pae_mem_query) == 0x14, "FH8626 PAE query wire size");
+_Static_assert(sizeof(struct pae_mem) == 0x1c, "FH8626 PAE memory wire size");
+_Static_assert(sizeof(struct pae_cfg) == 0x2c, "FH8626 PAE config wire size");
+
 static int isp_fd = -1;
 static int media_fd = -1;
 static int pae_fd = -1;
