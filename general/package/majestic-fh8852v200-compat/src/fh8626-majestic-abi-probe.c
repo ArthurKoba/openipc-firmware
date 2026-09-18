@@ -233,5 +233,9 @@ int main(int argc, char **argv)
     printf("probe result: mode=compat devices_missing=%d required_symbols_missing=%d\n",
            devices_missing, symbols_missing);
 
-    return symbols_missing ? 3 : 0;
+    if (symbols_missing)
+        return 3;
+    if (devices_missing)
+        return 4;
+    return 0;
 }
