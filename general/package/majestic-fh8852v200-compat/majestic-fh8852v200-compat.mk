@@ -53,9 +53,6 @@ define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
 		-Wl,-soname,libvmm.so \
 		-o $(@D)/libvmm.so \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-vmm-fh8852-compat.c
-	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) \
-		-o $(@D)/fh8626-majestic-http \
-		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-majestic-http.c
 	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) -fPIC -shared \
 		-Wl,-soname,libacw_mpi.so \
 		-o $(@D)/libacw_mpi.so \
@@ -68,8 +65,6 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/majestic
 	$(INSTALL) -m 755 $(@D)/fh8626-majestic-abi-probe \
 		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/fh8626-majestic-abi-probe
-	$(INSTALL) -m 755 $(@D)/fh8626-majestic-http \
-		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/fh8626-majestic-http
 	$(INSTALL) -m 755 \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/files/majestic-fh8626-run \
 		$(TARGET_DIR)/usr/libexec/majestic-fh8852v200/majestic-fh8626-run

@@ -14,24 +14,22 @@ config BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT
 	  Experimental FH8626V100 runtime using the FH8852V200 Majestic binary
 	  and a staged source compatibility boundary.
 
-	  Default boot remains media-off. Majestic listens on loopback:18080;
-	  a source FH8626 HTTP proxy owns port 80, preserves normal HTTP/API/
-	  WebSocket traffic and provides the standard /metrics endpoint from
-	  Linux /proc data. No WebUI JavaScript patch is used.
+	  Majestic HTTP/WebUI is untouched and continues to own its normal web
+	  port and control plane directly. This package does not patch frontend
+	  JavaScript, proxy Majestic HTTP, or replace its WebUI/API behavior.
 
 	  No FH8852 kernel modules, firmware, load scripts or donor sensor
 	  plug-ins are installed.
 
-	  Explicit bring-up runners add source-built FH8626 adapters:
-	  - FH8852-shaped GC1054 sensor ABI (0x7c -> native 0x68 callbacks);
-	  - FH8852 libdsp surface for recovered SYS/VPSS/VENC operations;
-	  - FH8852 libvmm surface for the recovered FH8626 VMM allocator;
-	  - FH8626 encoded-stream lease/release -> FH8852 public stream records.
+	  Explicit media bring-up uses source-built FH8626 adapters for:
+	  - FH8852-shaped GC1054 sensor ABI;
+	  - recovered SYS/VPSS/VENC operations;
+	  - FH8626 VMM allocation;
+	  - encoded-stream lease/release;
+	  - recovered RTX audio transport.
 
-	  The native-video runner is intentionally fixed to the recovered
-	  1280x720@25 H.264 Baseline bring-up contract and uses the recovered
-	  FH8626 VBR RC and producer-gate sequencing. Unknown/unproved controls
-	  remain localized staging stubs.
+	  The native-video path is deliberately constrained to the recovered
+	  1280x720@25 H.264 Baseline contract. Unknown layouts remain explicit
+	  staging boundaries rather than guessed compatibility.
 
 	  This is compatibility staging, not production-ready Majestic support.
-	  Build/runtime/hardware acceptance and donor pinning remain required.

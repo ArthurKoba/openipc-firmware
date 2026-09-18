@@ -7,14 +7,9 @@ shift || true
 CONFIG=/usr/share/majestic-fh8626/majestic-video.yaml
 TARGET=/etc/majestic.yaml
 MOUNTED=0
-PROXY_PID=
 
 cleanup()
 {
-	if [ -n "$PROXY_PID" ]; then
-		kill "$PROXY_PID" 2>/dev/null || true
-		wait "$PROXY_PID" 2>/dev/null || true
-	fi
 	if [ "$MOUNTED" = 1 ]; then
 		umount "$TARGET" 2>/dev/null || true
 	fi
@@ -62,6 +57,4 @@ case "$MODE" in
 		;;
 esac
 
-/usr/libexec/majestic-fh8852v200/fh8626-majestic-http &
-PROXY_PID="$!"
 /usr/libexec/majestic-fh8852v200/majestic "$@"
