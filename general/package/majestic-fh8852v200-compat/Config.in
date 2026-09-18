@@ -12,22 +12,26 @@ config BR2_PACKAGE_MAJESTIC_FH8852V200_COMPAT
 	select BR2_PACKAGE_MAJESTIC_WEBUI
 	help
 	  Experimental FH8626V100 runtime using the FH8852V200 Majestic binary
-	  and the minimum FH8852V200 userspace library closure needed to load it.
+	  and a staged source compatibility boundary.
 
-	  The donor libraries remain isolated under
-	  /usr/lib/majestic-fh8852v200. No FH8852 kernel modules, firmware,
-	  load scripts or sensor plug-ins are installed.
+	  Default boot remains media-off. Majestic listens on loopback:18080;
+	  a source FH8626 HTTP proxy owns port 80, preserves normal HTTP/API/
+	  WebSocket traffic and provides the standard /metrics endpoint from
+	  Linux /proc data. No WebUI JavaScript patch is used.
 
-	  The package also builds a non-mutating ABI probe that verifies donor
-	  library loading, expected Fullhan API symbols and native FH8626 media
-	  device-node availability without entering SDK/media initialization.
+	  No FH8852 kernel modules, firmware, load scripts or donor sensor
+	  plug-ins are installed.
 
-	  A separate bring-up runner installs a source-built FH8852-shaped
-	  GC1054 sensor facade. The facade translates the recovered FH8852
-	  0x7c-byte sensor callback ABI onto the recovered FH8626 0x68-byte
-	  callback ABI and localizes unresolved controls as staging stubs.
-	  It is never selected by the default media-off service.
+	  Explicit bring-up runners add source-built FH8626 adapters:
+	  - FH8852-shaped GC1054 sensor ABI (0x7c -> native 0x68 callbacks);
+	  - FH8852 libdsp surface for recovered SYS/VPSS/VENC operations;
+	  - FH8852 libvmm surface for the recovered FH8626 VMM allocator;
+	  - FH8626 encoded-stream lease/release -> FH8852 public stream records.
 
-	  The shipped configuration deliberately disables the media plane.
-	  HTTP/WebUI control-plane startup is hardware-proven on AJL33PQ0866;
-	  FH8626 video/ISP capture compatibility remains unfinished.
+	  The native-video runner is intentionally fixed to the recovered
+	  1280x720@25 H.264 Baseline bring-up contract and uses the recovered
+	  FH8626 VBR RC and producer-gate sequencing. Unknown/unproved controls
+	  remain localized staging stubs.
+
+	  This is compatibility staging, not production-ready Majestic support.
+	  Build/runtime/hardware acceptance and donor pinning remain required.
