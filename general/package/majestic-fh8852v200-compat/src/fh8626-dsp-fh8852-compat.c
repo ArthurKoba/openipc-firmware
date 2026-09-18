@@ -539,25 +539,24 @@ int FH_VPSS_SetChnAttr(uint32_t chn, const void *attr)
 {
     const uint32_t *w = attr;
     struct channel_cfg cfg;
+    int rc;
 
-    trace_words("FH_VPSS_SetChnAttr", chn, attr, 12);
     if (!attr || chn >= FH8626_VPU_CHANNELS)
         return -EINVAL;
 
     /*
-     * FH8852 public attribute layout is not closed yet. In permissive bring-up
-     * use the first two non-zero geometry words only when they are plausible;
-     * otherwise keep the proven native 720p geometry.
+     * Recovered FH8852 wrapper: public attr is exactly {width,height};
+     * the wrapper prepends channel and issues its 0x0c-byte SET_CHN_CFG.
+     * FH8626 consumes the same three-word semantic record at 0xC00C6948.
      */
-    cfg.chn = chn;
-    cfg.width = FH8626_WIDTH;
-    cfg.height = FH8626_HEIGHT;
-    if (w[0] >= 32 && w[0] <= 1920 && w[1] >= 32 && w[1] <= 2048) {
-        cfg.width = w[0];
-        cfg.height = w[1];
-    }
-    if (open_native())
-        return -EIO;
+    trace_words("FH_VPSS_SetChnAttr", chn, attr, 2);
+    if (w[0] < 32u || w[0] > 4096u ||
+        w[1] < 32u || w[1] > 4096u)
+        return -ERANGE;
+
+    cfg = (struct channel_cfg){chn, w[0], w[1]};
+    if ((rc = open_native()))
+        return rc;
     return call_ioctl(isp_fd, FH8626_VPU_SET_CHN_CFG, &cfg);
 }
 
