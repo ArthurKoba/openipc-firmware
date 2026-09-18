@@ -45,6 +45,10 @@ define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
 		-o $(@D)/libgc1054_mipi.so \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-gc1054-fh8852-compat.c \
 		-ldl
+	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) -fPIC -shared \
+		-Wl,-soname,libdsp.so \
+		-o $(@D)/libdsp.so \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-dsp-fh8852-compat.c
 endef
 
 define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
@@ -57,6 +61,8 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/lib/majestic-fh8626
 	$(INSTALL) -m 755 $(@D)/libgc1054_mipi.so \
 		$(TARGET_DIR)/usr/lib/majestic-fh8626/libgc1054_mipi.so
+	$(INSTALL) -m 755 $(@D)/libdsp.so \
+		$(TARGET_DIR)/usr/lib/majestic-fh8626/libdsp.so
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/lib/majestic-fh8852v200
 	for lib in $(MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBS); do \
