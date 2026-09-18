@@ -61,6 +61,11 @@ define MAJESTIC_FH8852V200_COMPAT_BUILD_CMDS
 		-Wl,-soname,libmipi.so \
 		-o $(@D)/libmipi.so \
 		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-libmipi.c
+	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_LDFLAGS) -fPIC -shared \
+		-Wl,-soname,libgc1054_fh8626_native.so \
+		-o $(@D)/libgc1054_fh8626_native.so \
+		$(MAJESTIC_FH8852V200_COMPAT_PKGDIR)/src/fh8626-gc1054-native.c \
+		-L$(@D) -Wl,-rpath-link,$(@D) -lmipi
 endef
 
 define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
@@ -84,6 +89,8 @@ define MAJESTIC_FH8852V200_COMPAT_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/usr/lib/majestic-fh8626/libacw_mpi.so
 	$(INSTALL) -m 755 $(@D)/libmipi.so \
 		$(TARGET_DIR)/usr/lib/majestic-fh8626/libmipi.so
+	$(INSTALL) -m 755 $(@D)/libgc1054_fh8626_native.so \
+		$(TARGET_DIR)/usr/lib/majestic-fh8626/libgc1054_fh8626_native.so
 
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/lib/majestic-fh8852v200
 	for lib in $(MAJESTIC_FH8852V200_COMPAT_VENDOR_LIBS); do \

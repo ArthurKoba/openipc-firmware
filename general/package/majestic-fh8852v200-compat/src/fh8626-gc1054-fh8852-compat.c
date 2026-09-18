@@ -125,7 +125,7 @@ static int native_open(void)
 
     path = getenv("FH8626_NATIVE_SENSOR_SO");
     if (!path || !path[0])
-        path = "/usr/lib/fh8626/libgc1054_mipi.so";
+        path = "/usr/lib/majestic-fh8626/libgc1054_fh8626_native.so";
 
     native_handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
     if (!native_handle) {
